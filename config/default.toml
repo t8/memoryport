@@ -1,0 +1,29 @@
+[arweave]
+gateway = "https://arweave.net"
+turbo_endpoint = "https://upload.ardrive.io"
+# wallet_path = "~/.unlimited-context/wallet.json"
+
+[index]
+path = "~/.unlimited-context/index"
+embedding_dimensions = 1536
+
+[retrieval]
+max_context_tokens = 50000
+recency_window = 20
+similarity_top_k = 50
+rerank = false
+
+[embeddings]
+provider = "openai"
+model = "text-embedding-3-small"
+dimensions = 1536
+# api_key sourced from OPENAI_API_KEY env var
+# For Ollama:
+# provider = "ollama"
+# model = "nomic-embed-text"
+# dimensions = 768
+# api_base = "http://localhost:11434"
+
+[proxy]
+listen = "127.0.0.1:8080"
+# upstream = "https://api.anthropic.com"

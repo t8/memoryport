@@ -1,0 +1,9 @@
+/target
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Wallet files (never commit)
+*.json.key
+wallet.json

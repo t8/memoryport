@@ -1,0 +1,10 @@
+[package]
+name = "uc-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP server implementation for Unlimited Context"
+
+[dependencies]
+uc-core = { workspace = true }
+tokio = { workspace = true }
