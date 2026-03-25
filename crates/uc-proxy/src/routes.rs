@@ -31,16 +31,8 @@ fn detect_upstream(request: &serde_json::Value) -> &'static str {
         || model.starts_with("nomic")
         || model.contains(":")
     {
-        // Ollama models — check if intercept is active (Ollama moved to 11435)
-        let marker = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".memoryport")
-            .join("ollama-intercept.active");
-        if marker.exists() {
-            "http://localhost:11435"
-        } else {
-            "http://localhost:11434"
-        }
+        // Ollama always runs on its default port — we don't move it
+        "http://localhost:11434"
     } else {
         // Default to OpenAI
         "https://api.openai.com"
@@ -256,14 +248,9 @@ pub async fn ollama_root() -> &'static str {
     "Ollama is running"
 }
 
-/// Get the port where real Ollama is running.
+/// Get the port where real Ollama is running (always default, we don't move it).
 fn get_ollama_port() -> &'static str {
-    // Check marker file on every call (cheap file existence check)
-    let marker = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".memoryport")
-        .join("ollama-intercept.active");
-    if marker.exists() { "11435" } else { "11434" }
+    "11434"
 }
 
 /// Forward Ollama native API requests (POST /api/*) directly to real Ollama.

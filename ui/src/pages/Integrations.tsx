@@ -181,12 +181,12 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-medium text-sm">Ollama Auto-Capture</h3>
-                  <Tooltip content="When enabled, Memoryport transparently intercepts all Ollama traffic. Ollama moves to port 11435 and the proxy takes over port 11434 — every existing Ollama client works automatically with no config changes. All conversations are captured and searchable." />
+                  <Tooltip content="When enabled, the Memoryport proxy captures all Ollama conversations routed through it. Ollama stays running normally on its default port — nothing is moved or disrupted. Set OLLAMA_HOST=http://127.0.0.1:9191 in your Ollama clients to route through the proxy." />
                 </div>
                 <p className="text-xs text-zinc-500 mt-0.5">
                   {ollamaEnabled
-                    ? "Intercepting all Ollama traffic on port 11434"
-                    : "Transparent memory capture for all local Ollama models"}
+                    ? "Capturing Ollama conversations through proxy on port 9191"
+                    : "Memory capture for local Ollama models via proxy"}
                 </p>
               </div>
             </div>
@@ -200,19 +200,27 @@ export default function Integrations() {
             </div>
           </div>
           {ollamaEnabled && (
-            <div className="mt-3 pt-3 border-t border-zinc-800 grid grid-cols-3 gap-4 text-xs">
-              <div>
-                <span className="text-zinc-500">Proxy port</span>
-                <p className="text-zinc-300 mt-0.5">11434 (default)</p>
+            <div className="mt-3 pt-3 border-t border-zinc-800 space-y-3">
+              <div className="grid grid-cols-3 gap-4 text-xs">
+                <div>
+                  <span className="text-zinc-500">Proxy</span>
+                  <p className="text-zinc-300 mt-0.5">127.0.0.1:9191</p>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Ollama</span>
+                  <p className="text-zinc-300 mt-0.5">127.0.0.1:11434 (unchanged)</p>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Status</span>
+                  <p className="text-emerald-400 mt-0.5">Active</p>
+                </div>
               </div>
-              <div>
-                <span className="text-zinc-500">Ollama port</span>
-                <p className="text-zinc-300 mt-0.5">11435 (moved)</p>
+              <div className="rounded bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400 font-mono">
+                OLLAMA_HOST=http://127.0.0.1:9191
               </div>
-              <div>
-                <span className="text-zinc-500">Client config</span>
-                <p className="text-zinc-300 mt-0.5">None needed</p>
-              </div>
+              <p className="text-xs text-zinc-500">
+                Set the above env var in any Ollama client to route through Memoryport.
+              </p>
             </div>
           )}
         </div>
