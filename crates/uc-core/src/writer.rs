@@ -1,6 +1,7 @@
 use crate::models::{Batch, BatchPayload, UploadReceipt};
 use crate::tagger;
 use chrono::Utc;
+use std::sync::Arc;
 use thiserror::Error;
 use tracing::{debug, info};
 use uc_arweave::{ArweaveClient, ArweaveError};
@@ -17,13 +18,12 @@ pub enum WriterError {
 
 /// Handles serializing batches and submitting them to Arweave.
 pub struct Writer {
-    arweave: ArweaveClient,
-    user_id: String,
+    arweave: Arc<ArweaveClient>,
 }
 
 impl Writer {
-    pub fn new(arweave: ArweaveClient, user_id: String) -> Self {
-        Self { arweave, user_id }
+    pub fn new_from_arc(arweave: Arc<ArweaveClient>) -> Self {
+        Self { arweave }
     }
 
     /// Serialize a batch to JSON and upload to Arweave via Turbo.
@@ -39,8 +39,8 @@ impl Writer {
             "serialized batch for upload"
         );
 
-        // 2. Generate and validate tags
-        let tags = tagger::generate_batch_tags(batch, &self.user_id);
+        // 2. Generate and validate tags (user_id comes from batch)
+        let tags = tagger::generate_batch_tags(batch, &batch.user_id);
         tagger::validate_tag_budget(&tags)?;
 
         // 3. Upload to Arweave

@@ -99,14 +99,16 @@ pub struct ChunkMetadata {
 pub struct Batch {
     pub id: Uuid,
     pub schema_version: u32,
+    pub user_id: String,
     pub chunks: Vec<Chunk>,
 }
 
 impl Batch {
-    pub fn new(chunks: Vec<Chunk>) -> Self {
+    pub fn new(chunks: Vec<Chunk>, user_id: impl Into<String>) -> Self {
         Self {
             id: Uuid::new_v4(),
             schema_version: 1,
+            user_id: user_id.into(),
             chunks,
         }
     }
@@ -148,6 +150,7 @@ pub struct QueryParams {
     pub top_k: usize,
     pub session_id: Option<String>,
     pub chunk_type: Option<ChunkType>,
+    pub time_range: Option<(i64, i64)>,
 }
 
 impl Default for QueryParams {
@@ -157,8 +160,25 @@ impl Default for QueryParams {
             top_k: 10,
             session_id: None,
             chunk_type: None,
+            time_range: None,
         }
     }
+}
+
+/// Signals extracted from a user query by the analyzer.
+#[derive(Debug, Clone, Default)]
+pub struct QuerySignals {
+    pub temporal_range: Option<(i64, i64)>,
+    pub explicit_session: Option<String>,
+    pub is_recency_heavy: bool,
+}
+
+/// Assembled context ready for LLM injection.
+#[derive(Debug, Clone)]
+pub struct AssembledContext {
+    pub formatted: String,
+    pub token_count: u32,
+    pub chunks_included: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -265,7 +285,7 @@ mod tests {
                 content: "hi".into(),
                 metadata: ChunkMetadata::default(),
             },
-        ]);
+        ], "user_123");
         assert_eq!(batch.timestamp_range(), Some((100, 200)));
         assert_eq!(batch.session_id_if_uniform(), Some("s1"));
     }

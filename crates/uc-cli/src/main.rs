@@ -38,7 +38,7 @@ enum Commands {
         role: Option<String>,
     },
 
-    /// Query stored content by semantic similarity.
+    /// Query stored content with full retrieval pipeline (retrieve + rerank + assemble).
     Query {
         /// The search query text.
         text: String,
@@ -47,13 +47,38 @@ enum Commands {
         #[arg(short, long, default_value = "default")]
         user_id: String,
 
-        /// Number of results to return.
-        #[arg(short = 'k', long, default_value = "5")]
-        top_k: usize,
-
-        /// Filter by session ID.
+        /// Active session ID for recency and session affinity.
         #[arg(short, long)]
         session_id: Option<String>,
+
+        /// Max tokens for assembled context.
+        #[arg(short = 'm', long, default_value = "50000")]
+        max_tokens: u32,
+    },
+
+    /// Retrieve raw ranked results (without context assembly).
+    Retrieve {
+        /// The search query text.
+        text: String,
+
+        /// User ID.
+        #[arg(short, long, default_value = "default")]
+        user_id: String,
+
+        /// Active session ID.
+        #[arg(short, long)]
+        session_id: Option<String>,
+
+        /// Number of results to show.
+        #[arg(short = 'k', long, default_value = "10")]
+        top_k: usize,
+    },
+
+    /// Rebuild the local index from Arweave.
+    RebuildIndex {
+        /// User ID to rebuild for.
+        #[arg(short, long)]
+        user_id: String,
     },
 
     /// Show engine status.
@@ -114,21 +139,38 @@ async fn main() -> anyhow::Result<()> {
         Commands::Query {
             text,
             user_id,
-            top_k,
             session_id,
+            max_tokens,
         } => {
-            let params = QueryParams {
-                user_id,
-                top_k,
-                session_id,
-                chunk_type: None,
-            };
-            let results = engine.query(&text, params).await?;
+            let context = engine
+                .query(&text, &user_id, session_id.as_deref(), max_tokens)
+                .await?;
+
+            if context.chunks_included == 0 {
+                println!("No results found.");
+            } else {
+                println!(
+                    "--- Assembled Context ({} chunks, ~{} tokens) ---\n",
+                    context.chunks_included, context.token_count
+                );
+                println!("{}", context.formatted);
+            }
+        }
+
+        Commands::Retrieve {
+            text,
+            user_id,
+            session_id,
+            top_k,
+        } => {
+            let results = engine
+                .retrieve(&text, &user_id, session_id.as_deref())
+                .await?;
 
             if results.is_empty() {
                 println!("No results found.");
             } else {
-                for (i, r) in results.iter().enumerate() {
+                for (i, r) in results.iter().take(top_k).enumerate() {
                     println!("--- Result {} (score: {:.4}) ---", i + 1, r.score);
                     println!("  Chunk:   {}", r.chunk_id);
                     println!("  Session: {}", r.session_id);
@@ -141,6 +183,16 @@ async fn main() -> anyhow::Result<()> {
                     println!();
                 }
             }
+        }
+
+        Commands::RebuildIndex { user_id } => {
+            println!("Rebuilding index for user '{user_id}' from Arweave...");
+            let progress = engine.rebuild_index(&user_id).await?;
+            println!("Rebuild complete:");
+            println!("  Transactions found:     {}", progress.transactions_found);
+            println!("  Transactions processed: {}", progress.transactions_processed);
+            println!("  Chunks indexed:         {}", progress.chunks_indexed);
+            println!("  Errors:                 {}", progress.errors);
         }
 
         Commands::Status => {
@@ -167,7 +219,6 @@ fn truncate(s: &str, max: usize) -> &str {
     if s.len() <= max {
         s
     } else {
-        // Find a char boundary
         let mut end = max;
         while end > 0 && !s.is_char_boundary(end) {
             end -= 1;

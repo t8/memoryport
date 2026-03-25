@@ -20,6 +20,7 @@ pub type FlushCallback = Arc<
 
 struct BatcherInner {
     buffer: Vec<Chunk>,
+    user_id: String,
     max_chunks: usize,
     flush_interval: Duration,
     last_flush: Instant,
@@ -32,16 +33,21 @@ pub struct Batcher {
 }
 
 impl Batcher {
-    pub fn new(max_chunks: usize, flush_interval: Duration, on_flush: FlushCallback) -> Self {
+    pub fn new(max_chunks: usize, flush_interval: Duration, user_id: impl Into<String>, on_flush: FlushCallback) -> Self {
         Self {
             inner: Arc::new(Mutex::new(BatcherInner {
                 buffer: Vec::new(),
+                user_id: user_id.into(),
                 max_chunks,
                 flush_interval,
                 last_flush: Instant::now(),
                 on_flush,
             })),
         }
+    }
+
+    pub async fn set_user_id(&self, user_id: impl Into<String>) {
+        self.inner.lock().await.user_id = user_id.into();
     }
 
     /// Add a chunk to the buffer. May trigger a flush if the buffer reaches capacity.
@@ -77,7 +83,7 @@ impl Batcher {
 
             let chunks = std::mem::take(&mut inner.buffer);
             inner.last_flush = Instant::now();
-            let batch = Batch::new(chunks);
+            let batch = Batch::new(chunks, &inner.user_id);
 
             debug!(
                 batch_id = %batch.id,
@@ -120,7 +126,7 @@ impl Batcher {
                         }
                         let chunks = std::mem::take(&mut inner.buffer);
                         inner.last_flush = Instant::now();
-                        let batch = Batch::new(chunks);
+                        let batch = Batch::new(chunks, &inner.user_id);
                         (batch, inner.on_flush.clone())
                     };
 
@@ -170,7 +176,7 @@ mod tests {
             })
         });
 
-        let batcher = Batcher::new(3, Duration::from_secs(60), callback);
+        let batcher = Batcher::new(3, Duration::from_secs(60), "test_user", callback);
 
         batcher.add(test_chunk()).await.unwrap();
         batcher.add(test_chunk()).await.unwrap();
@@ -194,7 +200,7 @@ mod tests {
             })
         });
 
-        let batcher = Batcher::new(100, Duration::from_secs(60), callback);
+        let batcher = Batcher::new(100, Duration::from_secs(60), "test_user", callback);
         batcher.add(test_chunk()).await.unwrap();
         batcher.flush().await.unwrap();
         assert_eq!(flush_count.load(Ordering::SeqCst), 1);
@@ -206,7 +212,7 @@ mod tests {
             Box::pin(async { panic!("should not be called") })
         });
 
-        let batcher = Batcher::new(10, Duration::from_secs(60), callback);
+        let batcher = Batcher::new(10, Duration::from_secs(60), "test_user", callback);
         batcher.flush().await.unwrap(); // no-op
     }
 }

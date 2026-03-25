@@ -84,13 +84,14 @@ impl Index {
     pub async fn insert(
         &self,
         entries: &[(Chunk, Vec<f32>, String, u32)],
+        user_id: &str,
     ) -> Result<(), IndexError> {
         if entries.is_empty() {
             return Ok(());
         }
 
         let schema = build_schema(self.dimensions);
-        let batch = build_record_batch(entries, &schema, self.dimensions)?;
+        let batch = build_record_batch(entries, user_id, &schema, self.dimensions)?;
 
         let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
         self.table.add(batches).execute().await?;
@@ -114,6 +115,9 @@ impl Index {
         if let Some(ref ct) = params.chunk_type {
             filter.push_str(&format!(" AND chunk_type = '{}'", ct.as_str()));
         }
+        if let Some((start, end)) = params.time_range {
+            filter.push_str(&format!(" AND timestamp >= {start} AND timestamp <= {end}"));
+        }
 
         let results: Vec<RecordBatch> = self
             .table
@@ -131,6 +135,41 @@ impl Index {
             let parsed = parse_search_results(batch)?;
             search_results.extend(parsed);
         }
+
+        Ok(search_results)
+    }
+
+    /// Get the most recent chunks for a user+session (no vector search).
+    pub async fn get_recent(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, IndexError> {
+        let filter = format!(
+            "user_id = '{}' AND session_id = '{}'",
+            sanitize_sql(user_id),
+            sanitize_sql(session_id)
+        );
+
+        let results: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(filter)
+            .limit(limit)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut search_results = Vec::new();
+        for batch in &results {
+            let parsed = parse_search_results(batch)?;
+            search_results.extend(parsed);
+        }
+
+        // Sort by timestamp descending (most recent first)
+        search_results.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         Ok(search_results)
     }
@@ -161,6 +200,7 @@ impl Index {
 /// Build an Arrow RecordBatch from chunk entries.
 fn build_record_batch(
     entries: &[(Chunk, Vec<f32>, String, u32)],
+    user_id: &str,
     schema: &SchemaRef,
     dimensions: usize,
 ) -> Result<RecordBatch, IndexError> {
@@ -192,7 +232,7 @@ fn build_record_batch(
             Arc::new(StringArray::from_iter_values(chunk_id_strings.iter().map(|s| s.as_str()))) as ArrayRef,
             Arc::new(StringArray::from_iter_values(tx_id_strings.iter().copied())) as ArrayRef,
             Arc::new(UInt32Array::from(batch_indices)) as ArrayRef,
-            Arc::new(StringArray::from_iter_values(entries.iter().map(|_| "default"))) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(entries.iter().map(|_| user_id))) as ArrayRef,
             Arc::new(StringArray::from_iter_values(session_ids.iter().map(|s| s.as_str()))) as ArrayRef,
             Arc::new(StringArray::from_iter_values(chunk_types.iter().copied())) as ArrayRef,
             Arc::new(StringArray::from(roles.iter().map(|r| *r).collect::<Vec<Option<&str>>>())) as ArrayRef,

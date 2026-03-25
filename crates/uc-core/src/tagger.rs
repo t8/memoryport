@@ -75,7 +75,7 @@ mod tests {
         let batch = Batch::new(vec![
             test_chunk("s1", 1000),
             test_chunk("s1", 2000),
-        ]);
+        ], "user_123");
         let tags = generate_batch_tags(&batch, "user_123");
 
         let tag_names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
