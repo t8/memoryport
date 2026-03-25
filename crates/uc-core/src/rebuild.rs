@@ -1,4 +1,6 @@
+use crate::crypto::{self, EncryptedBatchKey, EncryptedPayload, MasterKey};
 use crate::index::Index;
+use crate::keystore::KeyStore;
 use crate::models::{BatchPayload, Chunk};
 use thiserror::Error;
 use tracing::{debug, info, warn};
@@ -15,6 +17,12 @@ pub enum RebuildError {
     Embedding(#[from] uc_embeddings::EmbeddingError),
     #[error("failed to parse transaction data: {0}")]
     Parse(String),
+    #[error("decryption error: {0}")]
+    Crypto(#[from] crypto::CryptoError),
+    #[error("encrypted batch but no master key available")]
+    NoMasterKey,
+    #[error("encrypted batch but no batch key found for tx {0}")]
+    NoBatchKey(String),
 }
 
 /// Progress tracker for index rebuilds.
@@ -27,14 +35,13 @@ pub struct RebuildProgress {
 }
 
 /// Rebuild the local LanceDB index from Arweave.
-///
-/// Queries ar.io GraphQL for all UnlimitedContext transactions belonging to the user,
-/// fetches transaction data, parses chunks, computes embeddings, and inserts into the index.
 pub async fn rebuild_index(
     arweave: &ArweaveClient,
     index: &Index,
     embeddings: &dyn EmbeddingProvider,
     user_id: &str,
+    master_key: Option<&MasterKey>,
+    keystore: Option<&KeyStore>,
 ) -> Result<RebuildProgress, RebuildError> {
     let mut progress = RebuildProgress {
         transactions_found: 0,
@@ -43,7 +50,6 @@ pub async fn rebuild_index(
         errors: 0,
     };
 
-    // 1. Query all transactions for this user
     let tag_filters = vec![
         TagFilter::single("App-Name", "UnlimitedContext"),
         TagFilter::single("UC-User-Id", user_id),
@@ -54,11 +60,24 @@ pub async fn rebuild_index(
     progress.transactions_found = edges.len();
     info!(count = edges.len(), "found transactions on Arweave");
 
-    // 2. Process each transaction
     for edge in &edges {
         let tx_id = &edge.node.id;
 
-        match process_transaction(arweave, index, embeddings, tx_id, user_id).await {
+        // Check if this transaction is encrypted (from tags)
+        let is_encrypted = edge.node.tags.iter().any(|t| t.name == "UC-Encrypted" && t.value == "true");
+        let batch_key_b64 = edge
+            .node
+            .tags
+            .iter()
+            .find(|t| t.name == "UC-Batch-Key")
+            .map(|t| t.value.clone());
+
+        match process_transaction(
+            arweave, index, embeddings, tx_id, user_id,
+            is_encrypted, batch_key_b64.as_deref(), master_key, keystore,
+        )
+        .await
+        {
             Ok(chunk_count) => {
                 progress.transactions_processed += 1;
                 progress.chunks_indexed += chunk_count;
@@ -87,12 +106,39 @@ async fn process_transaction(
     embeddings: &dyn EmbeddingProvider,
     tx_id: &str,
     user_id: &str,
+    is_encrypted: bool,
+    batch_key_b64: Option<&str>,
+    master_key: Option<&MasterKey>,
+    keystore: Option<&KeyStore>,
 ) -> Result<usize, RebuildError> {
     // Fetch raw transaction data
     let data = arweave.fetch_data(tx_id).await?;
 
+    // Decrypt if needed
+    let json_bytes = if is_encrypted {
+        let mk = master_key.ok_or(RebuildError::NoMasterKey)?;
+
+        // Get encrypted batch key from tag or keystore
+        let encrypted_batch_key = if let Some(b64) = batch_key_b64 {
+            EncryptedBatchKey::from_base64(b64)?
+        } else if let Some(ks) = keystore {
+            ks.get(tx_id)
+                .await
+                .map_err(|e| RebuildError::Parse(e.to_string()))?
+                .ok_or_else(|| RebuildError::NoBatchKey(tx_id.to_string()))?
+        } else {
+            return Err(RebuildError::NoBatchKey(tx_id.to_string()));
+        };
+
+        let batch_key = crypto::decrypt_batch_key(&encrypted_batch_key, mk)?;
+        let encrypted_payload = EncryptedPayload::from_bytes(&data)?;
+        crypto::decrypt_payload(&encrypted_payload, &batch_key)?
+    } else {
+        data
+    };
+
     // Parse JSON payload
-    let payload: BatchPayload = serde_json::from_slice(&data)
+    let payload: BatchPayload = serde_json::from_slice(&json_bytes)
         .map_err(|e| RebuildError::Parse(format!("tx {tx_id}: {e}")))?;
 
     if payload.chunks.is_empty() {
@@ -121,7 +167,6 @@ async fn process_transaction(
     let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
     let vectors = embeddings.embed_batch(&texts).await?;
 
-    // Build entries for index
     let entries: Vec<(Chunk, Vec<f32>, String, u32)> = chunks
         .into_iter()
         .zip(vectors.into_iter())
@@ -131,6 +176,17 @@ async fn process_transaction(
 
     let count = entries.len();
     index.insert(&entries, user_id).await?;
+
+    // Store batch key in local keystore for future use
+    if is_encrypted {
+        if let (Some(b64), Some(ks)) = (batch_key_b64, keystore) {
+            let ebk = EncryptedBatchKey::from_base64(b64)
+                .map_err(|e| RebuildError::Parse(e.to_string()))?;
+            ks.store(tx_id, &ebk, user_id)
+                .await
+                .map_err(|e| RebuildError::Parse(e.to_string()))?;
+        }
+    }
 
     Ok(count)
 }

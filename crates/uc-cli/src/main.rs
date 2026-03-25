@@ -81,6 +81,13 @@ enum Commands {
         user_id: String,
     },
 
+    /// Logically delete a batch by destroying its encryption key.
+    Delete {
+        /// Arweave transaction ID of the batch to delete.
+        #[arg(long)]
+        tx_id: String,
+    },
+
     /// Show engine status.
     Status,
 
@@ -193,6 +200,14 @@ async fn main() -> anyhow::Result<()> {
             println!("  Transactions processed: {}", progress.transactions_processed);
             println!("  Chunks indexed:         {}", progress.chunks_indexed);
             println!("  Errors:                 {}", progress.errors);
+        }
+
+        Commands::Delete { tx_id } => {
+            match engine.delete_batch(&tx_id).await {
+                Ok(true) => println!("Batch key destroyed for tx {tx_id}. Data is now permanently unreadable."),
+                Ok(false) => println!("No batch key found for tx {tx_id}."),
+                Err(e) => println!("Delete failed: {e}"),
+            }
         }
 
         Commands::Status => {

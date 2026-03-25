@@ -25,5 +25,19 @@ lancedb = "0.15"
 arrow-array = "53"
 arrow-schema = "53"
 
+# Crypto
+sha2 = { workspace = true }
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
+
+# Key store
+rusqlite = { workspace = true }
+hex = { workspace = true }
+
 # Config directories
 directories = "6"
+
+[dev-dependencies]
+tempfile = "3"

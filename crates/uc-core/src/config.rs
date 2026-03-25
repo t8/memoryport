@@ -22,6 +22,8 @@ pub struct Config {
     pub embeddings: EmbeddingsConfig,
     #[serde(default)]
     pub proxy: ProxyConfig,
+    #[serde(default)]
+    pub encryption: EncryptionConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,6 +165,28 @@ impl Default for ProxyConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Environment variable name containing the master passphrase.
+    #[serde(default = "default_passphrase_env")]
+    pub passphrase_env: String,
+}
+
+fn default_passphrase_env() -> String {
+    "UC_MASTER_PASSPHRASE".into()
+}
+
+impl Default for EncryptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            passphrase_env: default_passphrase_env(),
+        }
+    }
+}
+
 impl Config {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
@@ -177,6 +201,7 @@ impl Config {
             retrieval: RetrievalConfig::default(),
             embeddings: EmbeddingsConfig::default(),
             proxy: ProxyConfig::default(),
+            encryption: EncryptionConfig::default(),
         }
     }
 

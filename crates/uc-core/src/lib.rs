@@ -3,7 +3,9 @@ pub mod assembler;
 pub mod batcher;
 pub mod chunker;
 pub mod config;
+pub mod crypto;
 pub mod index;
+pub mod keystore;
 pub mod models;
 pub mod rebuild;
 pub mod reranker;
@@ -47,6 +49,10 @@ pub enum EngineError {
     Reranker(#[from] reranker::RerankerError),
     #[error("rebuild error: {0}")]
     Rebuild(#[from] rebuild::RebuildError),
+    #[error("crypto error: {0}")]
+    Crypto(#[from] crypto::CryptoError),
+    #[error("keystore error: {0}")]
+    KeyStore(#[from] keystore::KeyStoreError),
 }
 
 /// The main entry point for the Unlimited Context engine.
@@ -55,6 +61,8 @@ pub struct Engine {
     index: Arc<Index>,
     embeddings: Arc<dyn EmbeddingProvider>,
     arweave: Arc<ArweaveClient>,
+    master_key: Option<crypto::MasterKey>,
+    keystore: Option<Arc<keystore::KeyStore>>,
     retriever: Retriever,
     reranker: Box<dyn Reranker>,
     batcher: Batcher,
@@ -87,7 +95,41 @@ impl Engine {
         };
         let arweave = Arc::new(arweave);
 
-        let writer = Arc::new(Writer::new_from_arc(arweave.clone()));
+        // Initialize encryption if enabled
+        let (master_key, keystore) = if config.encryption.enabled {
+            let passphrase = std::env::var(&config.encryption.passphrase_env)
+                .unwrap_or_default();
+            if passphrase.is_empty() {
+                tracing::warn!(
+                    env = %config.encryption.passphrase_env,
+                    "encryption enabled but passphrase env var is empty"
+                );
+                (None, None)
+            } else {
+                // Use a deterministic salt derived from the index path for reproducibility
+                let salt_input = config.index.path.as_bytes();
+                let mut salt = [0u8; 16];
+                let hash = <sha2::Sha256 as sha2::Digest>::digest(salt_input);
+                salt.copy_from_slice(&hash[..16]);
+
+                let mk = crypto::derive_master_key(&passphrase, &salt)?;
+                let ks_path = index_path.with_extension("keys.db");
+                let ks = Arc::new(keystore::KeyStore::open(&ks_path)?);
+                info!("encryption enabled");
+                (Some(mk), Some(ks))
+            }
+        } else {
+            (None, None)
+        };
+
+        let writer = {
+            let w = Writer::new_from_arc(arweave.clone());
+            if let (Some(ref mk), Some(ref ks)) = (&master_key, &keystore) {
+                Arc::new(w.with_encryption(mk.clone(), ks.clone()))
+            } else {
+                Arc::new(w)
+            }
+        };
 
         // Create retriever
         let retriever = Retriever::new(
@@ -140,6 +182,8 @@ impl Engine {
             index,
             embeddings,
             arweave,
+            master_key,
+            keystore,
             retriever,
             reranker,
             batcher,
@@ -251,9 +295,23 @@ impl Engine {
             &self.index,
             self.embeddings.as_ref(),
             user_id,
+            self.master_key.as_ref(),
+            self.keystore.as_deref(),
         )
         .await?;
         Ok(progress)
+    }
+
+    /// Logical deletion: destroy the batch key for a transaction.
+    /// The ciphertext on Arweave becomes permanently unreadable.
+    pub async fn delete_batch(&self, tx_id: &str) -> Result<bool, EngineError> {
+        let ks = self.keystore.as_ref().ok_or_else(|| {
+            EngineError::Crypto(crypto::CryptoError::Encrypt(
+                "encryption/keystore not enabled".into(),
+            ))
+        })?;
+        let destroyed = ks.destroy(tx_id).await?;
+        Ok(destroyed)
     }
 
     /// Return engine status.
