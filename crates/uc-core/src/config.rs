@@ -88,6 +88,14 @@ pub struct RetrievalConfig {
     pub similarity_top_k: usize,
     #[serde(default)]
     pub rerank: bool,
+    #[serde(default)]
+    pub query_expansion: bool,
+    #[serde(default)]
+    pub hyde: bool,
+    /// LLM provider for query expansion / HyDE: "openai" or "ollama".
+    pub llm_provider: Option<String>,
+    /// LLM model for query expansion / HyDE (e.g., "gpt-4o-mini").
+    pub llm_model: Option<String>,
 }
 
 fn default_max_context_tokens() -> usize {
@@ -109,6 +117,10 @@ impl Default for RetrievalConfig {
             recency_window: default_recency_window(),
             similarity_top_k: default_similarity_top_k(),
             rerank: false,
+            query_expansion: false,
+            hyde: false,
+            llm_provider: None,
+            llm_model: None,
         }
     }
 }

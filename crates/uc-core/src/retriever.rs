@@ -1,5 +1,6 @@
 use crate::analyzer;
 use crate::config::RetrievalConfig;
+use crate::enhancer::QueryEnhancer;
 use crate::index::Index;
 use crate::models::{QueryParams, SearchResult};
 use std::collections::HashSet;
@@ -14,12 +15,15 @@ pub enum RetrieverError {
     Index(#[from] crate::index::IndexError),
     #[error("embedding error: {0}")]
     Embedding(#[from] uc_embeddings::EmbeddingError),
+    #[error("enhancer error: {0}")]
+    Enhancer(#[from] crate::enhancer::EnhancerError),
 }
 
-/// Multi-strategy retriever combining vector search, recency, and metadata queries.
+/// Multi-strategy retriever combining vector search, recency, metadata, and query enhancement.
 pub struct Retriever {
     index: Arc<Index>,
     embeddings: Arc<dyn EmbeddingProvider>,
+    enhancer: Option<Arc<dyn QueryEnhancer>>,
     config: RetrievalConfig,
 }
 
@@ -32,27 +36,43 @@ impl Retriever {
         Self {
             index,
             embeddings,
+            enhancer: None,
             config,
         }
     }
 
-    /// Run the full retrieval pipeline: analyze → multi-strategy search → merge → dedup.
+    pub fn with_enhancer(mut self, enhancer: Arc<dyn QueryEnhancer>) -> Self {
+        self.enhancer = Some(enhancer);
+        self
+    }
+
+    /// Run the full retrieval pipeline: enhance → analyze → multi-strategy search → merge → dedup.
     pub async fn retrieve(
         &self,
         query: &str,
         user_id: &str,
         active_session_id: Option<&str>,
     ) -> Result<Vec<SearchResult>, RetrieverError> {
-        // 1. Analyze query for signals
+        // 1. Enhance query (expansion + HyDE)
+        let enhanced = if let Some(ref enhancer) = self.enhancer {
+            enhancer.enhance(query).await?
+        } else {
+            crate::enhancer::EnhancedQuery {
+                original: query.to_string(),
+                expanded_queries: Vec::new(),
+                hyde_document: None,
+            }
+        };
+
+        // 2. Analyze query for signals
         let signals = analyzer::analyze_query(query);
+        debug!(?signals, expansions = enhanced.expanded_queries.len(), hyde = enhanced.hyde_document.is_some(), "query analysis complete");
 
-        debug!(?signals, "query analysis complete");
-
-        // 2. Run retrieval strategies in parallel
         let mut candidates = Vec::new();
 
-        // Strategy 1: Vector similarity search
-        let query_vector = self.embeddings.embed(query).await?;
+        // 3. Primary vector search — use HyDE document if available, otherwise raw query
+        let primary_text = enhanced.hyde_document.as_deref().unwrap_or(query);
+        let primary_vector = self.embeddings.embed(primary_text).await?;
         let vector_params = QueryParams {
             user_id: user_id.to_string(),
             top_k: self.config.similarity_top_k,
@@ -60,11 +80,26 @@ impl Retriever {
             chunk_type: None,
             time_range: signals.temporal_range,
         };
-        let vector_results = self.index.search(&query_vector, &vector_params).await?;
-        debug!(count = vector_results.len(), "vector search results");
-        candidates.extend(vector_results);
+        let primary_results = self.index.search(&primary_vector, &vector_params).await?;
+        debug!(count = primary_results.len(), hyde = enhanced.hyde_document.is_some(), "primary vector search results");
+        candidates.extend(primary_results);
 
-        // Strategy 2: Recency window (last N chunks from active session)
+        // 4. Expanded query searches
+        for expanded in &enhanced.expanded_queries {
+            let exp_vector = self.embeddings.embed(expanded).await?;
+            let exp_params = QueryParams {
+                user_id: user_id.to_string(),
+                top_k: self.config.similarity_top_k / 3, // fewer results per expansion
+                session_id: None,
+                chunk_type: None,
+                time_range: signals.temporal_range,
+            };
+            let exp_results = self.index.search(&exp_vector, &exp_params).await?;
+            debug!(query = %expanded, count = exp_results.len(), "expansion search results");
+            candidates.extend(exp_results);
+        }
+
+        // 5. Recency window (last N chunks from active session)
         if let Some(session_id) = active_session_id {
             let recency_limit = if signals.is_recency_heavy {
                 self.config.recency_window * 2
@@ -80,7 +115,7 @@ impl Retriever {
             candidates.extend(recency_results);
         }
 
-        // Strategy 3: Explicit session lookup
+        // 6. Explicit session lookup
         if let Some(ref explicit_sid) = signals.explicit_session {
             if active_session_id.map_or(true, |s| s != explicit_sid) {
                 let session_params = QueryParams {
@@ -90,13 +125,13 @@ impl Retriever {
                     chunk_type: None,
                     time_range: None,
                 };
-                let session_results = self.index.search(&query_vector, &session_params).await?;
+                let session_results = self.index.search(&primary_vector, &session_params).await?;
                 debug!(count = session_results.len(), session = %explicit_sid, "explicit session results");
                 candidates.extend(session_results);
             }
         }
 
-        // 3. Deduplicate by chunk_id
+        // 7. Deduplicate by chunk_id
         let deduped = dedup_by_chunk_id(candidates);
         debug!(total = deduped.len(), "deduplicated candidates");
 
@@ -106,7 +141,6 @@ impl Retriever {
 
 /// Remove duplicate results, keeping the one with the highest score.
 fn dedup_by_chunk_id(mut results: Vec<SearchResult>) -> Vec<SearchResult> {
-    // Sort by score descending so the best score for each chunk_id comes first
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut seen = HashSet::new();
@@ -141,7 +175,7 @@ mod tests {
                 role: None,
                 timestamp: 100,
                 content: "hello".into(),
-                score: 0.5, // lower score duplicate
+                score: 0.5,
                 arweave_tx_id: "tx1".into(),
             },
             SearchResult {
@@ -158,6 +192,6 @@ mod tests {
         let deduped = dedup_by_chunk_id(results);
         assert_eq!(deduped.len(), 2);
         assert_eq!(deduped[0].chunk_id, "a");
-        assert_eq!(deduped[0].score, 0.9); // kept the higher score
+        assert_eq!(deduped[0].score, 0.9);
     }
 }

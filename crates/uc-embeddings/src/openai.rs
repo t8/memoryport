@@ -1,3 +1,4 @@
+use crate::llm::{LlmError, LlmProvider};
 use crate::{EmbeddingError, EmbeddingProvider};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -111,6 +112,122 @@ impl EmbeddingProvider for OpenAiEmbeddings {
 
     fn dimensions(&self) -> usize {
         self.dims
+    }
+
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+}
+
+// -- OpenAI LLM (text generation) --
+
+/// OpenAI-compatible text generation client for query expansion / HyDE.
+pub struct OpenAiLlm {
+    http: reqwest::Client,
+    api_base: String,
+    api_key: String,
+    model: String,
+}
+
+#[derive(Serialize)]
+struct ChatRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct ChatResponse {
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Deserialize)]
+struct ChatChoice {
+    message: ChatResponseMessage,
+}
+
+#[derive(Deserialize)]
+struct ChatResponseMessage {
+    content: String,
+}
+
+impl OpenAiLlm {
+    pub fn new(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        api_base: Option<String>,
+    ) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            api_base: api_base.unwrap_or_else(|| "https://api.openai.com/v1".into()),
+            api_key: api_key.into(),
+            model: model.into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for OpenAiLlm {
+    async fn generate(&self, prompt: &str, system: Option<&str>) -> Result<String, LlmError> {
+        let url = format!("{}/chat/completions", self.api_base);
+
+        let mut messages = Vec::new();
+        if let Some(sys) = system {
+            messages.push(ChatMessage {
+                role: "system".into(),
+                content: sys.into(),
+            });
+        }
+        messages.push(ChatMessage {
+            role: "user".into(),
+            content: prompt.into(),
+        });
+
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages,
+            temperature: Some(0.7),
+            max_tokens: Some(500),
+        };
+
+        debug!(model = %self.model, "requesting LLM generation");
+
+        let response = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(LlmError::Api {
+                status: status.as_u16(),
+                message: body,
+            });
+        }
+
+        let resp: ChatResponse = response
+            .json()
+            .await
+            .map_err(|e| LlmError::Format(e.to_string()))?;
+
+        resp.choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .ok_or_else(|| LlmError::Format("empty response".into()))
     }
 
     fn model_name(&self) -> &str {

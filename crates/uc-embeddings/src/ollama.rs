@@ -1,3 +1,4 @@
+use crate::llm::{LlmError, LlmProvider};
 use crate::{EmbeddingError, EmbeddingProvider};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -81,6 +82,77 @@ impl EmbeddingProvider for OllamaEmbeddings {
 
     fn dimensions(&self) -> usize {
         self.dims
+    }
+
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+}
+
+// -- Ollama LLM (text generation) --
+
+/// Ollama text generation client for query expansion / HyDE.
+pub struct OllamaLlm {
+    http: reqwest::Client,
+    api_base: String,
+    model: String,
+}
+
+#[derive(Serialize)]
+struct OllamaGenerateRequest {
+    model: String,
+    prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<String>,
+    stream: bool,
+}
+
+#[derive(Deserialize)]
+struct OllamaGenerateResponse {
+    response: String,
+}
+
+impl OllamaLlm {
+    pub fn new(model: impl Into<String>, api_base: Option<String>) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            api_base: api_base.unwrap_or_else(|| "http://localhost:11434".into()),
+            model: model.into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for OllamaLlm {
+    async fn generate(&self, prompt: &str, system: Option<&str>) -> Result<String, LlmError> {
+        let url = format!("{}/api/generate", self.api_base);
+
+        let request = OllamaGenerateRequest {
+            model: self.model.clone(),
+            prompt: prompt.into(),
+            system: system.map(|s| s.into()),
+            stream: false,
+        };
+
+        debug!(model = %self.model, "requesting LLM generation from Ollama");
+
+        let response = self.http.post(&url).json(&request).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(LlmError::Api {
+                status: status.as_u16(),
+                message: body,
+            });
+        }
+
+        let resp: OllamaGenerateResponse = response
+            .json()
+            .await
+            .map_err(|e| LlmError::Format(e.to_string()))?;
+
+        Ok(resp.response)
     }
 
     fn model_name(&self) -> &str {

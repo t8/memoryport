@@ -4,6 +4,7 @@ pub mod batcher;
 pub mod chunker;
 pub mod config;
 pub mod crypto;
+pub mod enhancer;
 pub mod index;
 pub mod keystore;
 pub mod models;
@@ -131,12 +132,51 @@ impl Engine {
             }
         };
 
+        // Create query enhancer (if LLM configured for expansion / HyDE)
+        let enhancer: Option<Arc<dyn enhancer::QueryEnhancer>> = if config.retrieval.query_expansion || config.retrieval.hyde {
+            let llm_provider = config.retrieval.llm_provider.as_deref().unwrap_or(&config.embeddings.provider);
+            let llm_model = config.retrieval.llm_model.as_deref().unwrap_or("gpt-4o-mini");
+            let llm: Arc<dyn uc_embeddings::llm::LlmProvider> = match llm_provider {
+                "ollama" => Arc::new(uc_embeddings::ollama::OllamaLlm::new(
+                    llm_model,
+                    config.embeddings.api_base.clone(),
+                )),
+                _ => {
+                    let api_key = config.embeddings.api_key.clone()
+                        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                        .unwrap_or_default();
+                    Arc::new(uc_embeddings::openai::OpenAiLlm::new(
+                        api_key,
+                        llm_model,
+                        config.embeddings.api_base.clone(),
+                    ))
+                }
+            };
+            info!(
+                provider = llm_provider,
+                model = llm_model,
+                expansion = config.retrieval.query_expansion,
+                hyde = config.retrieval.hyde,
+                "query enhancement enabled"
+            );
+            Some(Arc::new(enhancer::LlmQueryEnhancer::new(
+                llm,
+                config.retrieval.query_expansion,
+                config.retrieval.hyde,
+            )))
+        } else {
+            None
+        };
+
         // Create retriever
-        let retriever = Retriever::new(
+        let mut retriever = Retriever::new(
             index.clone(),
             embeddings.clone(),
             config.retrieval.clone(),
         );
+        if let Some(e) = enhancer {
+            retriever = retriever.with_enhancer(e);
+        }
 
         // Create reranker
         let reranker: Box<dyn Reranker> = Box::new(HeuristicReranker::default());
