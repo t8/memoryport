@@ -405,9 +405,10 @@ fn is_system_prompt_leak(content: &str) -> bool {
     markers.iter().any(|m| content.contains(m))
 }
 
-/// Check if a message is a Claude Code internal command (not user conversation).
+/// Check if a message is an internal command or meta-request (not user conversation).
 fn is_internal_command(content: &str) -> bool {
     let markers = [
+        // Claude Code internal commands
         "<local-command-caveat>",
         "<command-name>",
         "<command-message>",
@@ -418,8 +419,15 @@ fn is_internal_command(content: &str) -> bool {
         "/clear",
         "/compact",
         "/config",
+        // Open WebUI title/tag generation
+        "\"title\":",
+        "\"tags\":",
+        "\"follow_ups\":",
+        "Generate a concise",
+        "generate a title",
+        "### Task:",
+        "JSON format",
     ];
-    // If the entire message is dominated by command markup, skip it
     markers.iter().any(|m| content.contains(m))
 }
 

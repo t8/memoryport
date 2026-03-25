@@ -253,34 +253,191 @@ fn get_ollama_port() -> &'static str {
     "11434"
 }
 
-/// Forward Ollama native API requests (POST /api/*) directly to real Ollama.
-/// These are non-OpenAI format requests — just passthrough with no modification.
-pub async fn forward_ollama_native(
+/// Forward any Ollama native API request (/api/*) to real Ollama.
+/// Captures conversations from /api/chat and /api/generate.
+pub async fn forward_ollama_any(
     State(state): State<Arc<ProxyState>>,
-    headers: HeaderMap,
+    method: axum::http::Method,
     uri: axum::http::Uri,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Response, StatusCode> {
     let ollama_port = get_ollama_port();
-    let upstream = format!("http://127.0.0.1:{}{}", ollama_port, uri.path());
-    eprintln!("[memoryport-proxy] forwarding POST {} -> {}", uri.path(), upstream);
+    let path = uri.path().to_string();
+    let upstream = format!("http://127.0.0.1:{}{}", ollama_port, path);
+    eprintln!("[memoryport-proxy] forwarding {} {} -> {}", method, path, upstream);
 
-    let resp = state
-        .http
-        .post(&upstream)
-        .header("content-type", "application/json")
-        .body(body.to_vec())
-        .send()
-        .await
-        .map_err(|e| {
-            warn!(error = %e, "failed to forward to Ollama");
-            StatusCode::BAD_GATEWAY
-        })?;
+    // Extract user message + model from /api/chat or /api/generate before forwarding
+    let (user_msg, model) = if (path == "/api/chat" || path == "/api/generate") && !body.is_empty() {
+        if let Ok(req_json) = serde_json::from_slice::<serde_json::Value>(&body) {
+            let model = req_json.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string();
+            let user_msg = if path == "/api/chat" {
+                // /api/chat: messages array
+                req_json.get("messages")
+                    .and_then(|m| m.as_array())
+                    .and_then(|msgs| msgs.iter().rev().find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user")))
+                    .and_then(|m| m.get("content").and_then(|c| c.as_str()))
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                // /api/generate: prompt field
+                req_json.get("prompt").and_then(|p| p.as_str()).unwrap_or("").to_string()
+            };
+            (user_msg, model)
+        } else {
+            (String::new(), "unknown".into())
+        }
+    } else {
+        (String::new(), "unknown".into())
+    };
+
+    // Detect if this is an Open WebUI internal request (title/tag generation, emoji, etc.)
+    let is_internal_request = if let Ok(req_json) = serde_json::from_slice::<serde_json::Value>(&body) {
+        req_json.get("messages")
+            .and_then(|m| m.as_array())
+            .map(|msgs| msgs.iter().any(|m| {
+                let content = m.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                content.contains("generate a title")
+                    || content.contains("Generate a concise")
+                    || content.contains("### Task:")
+                    || content.contains("\"title\"")
+                    || content.contains("\"tags\"")
+                    || content.contains("\"follow_ups\"")
+                    || content.contains("JSON format")
+                    || content.contains("json format")
+                    || content.contains("broad tags categorizing")
+                    || content.contains("emoji as a title")
+            }))
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    // Inject context into /api/chat requests (skip internal/meta requests)
+    let modified_body = if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
+        let clean_query = crate::anthropic::sanitize_query_pub(&user_msg);
+        let injected = match state.engine.search(&clean_query, &state.user_id, 20).await {
+            Ok(ref results) => {
+                let clean: Vec<_> = results
+                    .iter()
+                    .filter(|r| !crate::anthropic::is_system_prompt_leak_pub(&r.content))
+                    .cloned()
+                    .collect();
+                if clean.is_empty() {
+                    None
+                } else {
+                    let ctx = uc_core::assembler::assemble_context(&clean, state.context_budget);
+                    if ctx.chunks_included > 0 {
+                        eprintln!("[memoryport-proxy] injecting {} chunks into Ollama /api/chat", ctx.chunks_included);
+                        Some(crate::anthropic::format_plain_context(&ctx.formatted))
+                    } else {
+                        None
+                    }
+                }
+            }
+            Err(_) => None,
+        };
+
+        if let Some(context_text) = injected {
+            if let Ok(mut req_json) = serde_json::from_slice::<serde_json::Value>(&body) {
+                // Append context to the last user message
+                if let Some(messages) = req_json.get_mut("messages").and_then(|m| m.as_array_mut()) {
+                    for msg in messages.iter_mut().rev() {
+                        if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
+                            if let Some(content) = msg.get("content").and_then(|c| c.as_str()).map(|s| s.to_string()) {
+                                msg["content"] = serde_json::Value::String(format!(
+                                    "{}\n\nFor additional context, here is information from my previous conversations:\n\n{}\n\nPlease use the above context to answer my question.",
+                                    content, context_text
+                                ));
+                            }
+                            break;
+                        }
+                    }
+                }
+                serde_json::to_vec(&req_json).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let forward_body = modified_body.unwrap_or_else(|| body.to_vec());
+
+    // Forward the request
+    let mut req_builder = state.http.request(method, &upstream);
+    if let Some(ct) = headers.get("content-type") {
+        req_builder = req_builder.header("content-type", ct);
+    }
+    if !forward_body.is_empty() {
+        req_builder = req_builder.body(forward_body);
+    }
+
+    let resp = req_builder.send().await.map_err(|e| {
+        warn!(error = %e, "failed to forward to Ollama");
+        StatusCode::BAD_GATEWAY
+    })?;
 
     let status = StatusCode::from_u16(resp.status().as_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let resp_headers = resp.headers().clone();
     let body_bytes = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    // Capture conversation from /api/chat and /api/generate responses (skip internal requests)
+    if status.is_success() && (path == "/api/chat" || path == "/api/generate") && !is_internal_request {
+        let user_msg_clean = crate::anthropic::sanitize_for_storage_pub(&user_msg);
+        let model_clone = model.clone();
+
+        // Extract assistant response from streaming NDJSON
+        let assistant_text = if let Ok(body_str) = std::str::from_utf8(&body_bytes) {
+            extract_ollama_response(body_str, &path)
+        } else {
+            String::new()
+        };
+        let assistant_clean = crate::anthropic::sanitize_for_storage_pub(&assistant_text);
+
+        // Store user message
+        if user_msg_clean.len() >= 10 {
+            let engine = state.engine.clone();
+            let uid = state.user_id.clone();
+            let sid = state.session_id.clone();
+            let m = model_clone.clone();
+            let msg = user_msg_clean;
+            tokio::spawn(async move {
+                let params = uc_core::models::StoreParams {
+                    user_id: uid, session_id: sid,
+                    chunk_type: uc_core::models::ChunkType::Conversation,
+                    role: Some(uc_core::models::Role::User),
+                    source_integration: Some("proxy-ollama".into()),
+                    source_model: Some(m),
+                };
+                let _ = engine.store(&msg, params).await;
+                let _ = engine.flush().await;
+            });
+        }
+
+        // Store assistant response
+        if assistant_clean.len() >= 10 {
+            let engine = state.engine.clone();
+            let uid = state.user_id.clone();
+            let sid = state.session_id.clone();
+            let m = model_clone;
+            tokio::spawn(async move {
+                let params = uc_core::models::StoreParams {
+                    user_id: uid, session_id: sid,
+                    chunk_type: uc_core::models::ChunkType::Conversation,
+                    role: Some(uc_core::models::Role::Assistant),
+                    source_integration: Some("proxy-ollama".into()),
+                    source_model: Some(m),
+                };
+                let _ = engine.store(&assistant_clean, params).await;
+                let _ = engine.flush().await;
+            });
+        }
+    }
 
     let mut response = (status, body_bytes).into_response();
     if let Some(ct) = resp_headers.get("content-type") {
@@ -289,33 +446,28 @@ pub async fn forward_ollama_native(
     Ok(response)
 }
 
-/// Forward Ollama native GET requests (/api/tags etc.)
-pub async fn forward_ollama_native_get(
-    State(state): State<Arc<ProxyState>>,
-    uri: axum::http::Uri,
-) -> Result<Response, StatusCode> {
-    let ollama_port = get_ollama_port();
-    let upstream = format!("http://127.0.0.1:{}{}", ollama_port, uri.path());
-    eprintln!("[memoryport-proxy] forwarding GET {} -> {}", uri.path(), upstream);
-
-    let resp = state
-        .http
-        .get(&upstream)
-        .send()
-        .await
-        .map_err(|e| {
-            warn!(error = %e, "failed to forward to Ollama");
-            StatusCode::BAD_GATEWAY
-        })?;
-
-    let status = StatusCode::from_u16(resp.status().as_u16())
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    let resp_headers = resp.headers().clone();
-    let body_bytes = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-
-    let mut response = (status, body_bytes).into_response();
-    if let Some(ct) = resp_headers.get("content-type") {
-        response.headers_mut().insert("content-type", ct.clone());
+/// Extract assistant text from Ollama streaming NDJSON response.
+fn extract_ollama_response(body: &str, path: &str) -> String {
+    let mut text = String::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        if let Ok(obj) = serde_json::from_str::<serde_json::Value>(line) {
+            if path == "/api/chat" {
+                // /api/chat: {"message":{"content":"token"},"done":false}
+                if let Some(content) = obj.get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                {
+                    text.push_str(content);
+                }
+            } else {
+                // /api/generate: {"response":"token","done":false}
+                if let Some(content) = obj.get("response").and_then(|r| r.as_str()) {
+                    text.push_str(content);
+                }
+            }
+        }
     }
-    Ok(response)
+    text
 }
