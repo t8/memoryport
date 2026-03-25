@@ -1,0 +1,22 @@
+services:
+  uc-server:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - uc-data:/var/lib/uc-server
+    environment:
+      - RUST_LOG=uc_server=debug,uc_core=info
+      - UC_SERVER_LISTEN=0.0.0.0:8080
+      - UC_SERVER_DATA_DIR=/var/lib/uc-server
+      - UC_EMBEDDINGS_PROVIDER=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - UC_ADMIN_API_KEY=${UC_ADMIN_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  uc-data:

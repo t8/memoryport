@@ -6,6 +6,7 @@ members = [
     "crates/uc-cli",
     "crates/uc-mcp",
     "crates/uc-proxy",
+    "crates/uc-server",
 ]
 resolver = "2"
 
@@ -50,9 +51,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rmcp = { version = "1.2", features = ["server", "transport-io"] }
 schemars = "1.0"
 
-# Web (proxy)
+# Web
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "timeout"] }
+
+# Auth + DB
+rusqlite = { version = "0.32", features = ["bundled"] }
+hex = "0.4"
+
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 
 # Internal crates
 uc-arweave = { path = "crates/uc-arweave" }
