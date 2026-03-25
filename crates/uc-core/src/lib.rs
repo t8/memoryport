@@ -323,6 +323,26 @@ impl Engine {
         Ok(ranked)
     }
 
+    /// Direct vector search — bypasses gating. Use for explicit user search requests
+    /// (search bars, CLI retrieve) where the user is intentionally asking to search.
+    pub async fn search(
+        &self,
+        text: &str,
+        user_id: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>, EngineError> {
+        let query_vector = self.embeddings.embed(text).await?;
+        let params = models::QueryParams {
+            user_id: user_id.to_string(),
+            top_k,
+            session_id: None,
+            chunk_type: None,
+            time_range: None,
+        };
+        let results = self.index.search(&query_vector, &params).await?;
+        Ok(results)
+    }
+
     /// Get all chunks for a session, ordered chronologically.
     pub async fn get_session(
         &self,

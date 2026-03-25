@@ -15,3 +15,11 @@ wallet.json
 
 # Environment
 .env
+
+# Frontend
+ui/node_modules
+ui/dist
+ui/.vite
+
+# Tauri
+crates/uc-tauri/src-tauri/target

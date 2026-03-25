@@ -95,7 +95,10 @@ impl Retriever {
         let primary_vector = self.embeddings.embed(primary_text).await?;
 
         // ── Gate 2: Embedding routing ──
-        if self.config.gating_enabled && signals.decision == RetrievalDecision::Undecided {
+        // Skip Gate 2 for small indexes — no performance reason to gate, and
+        // the exemplar centroids may not match the user's actual content patterns.
+        let index_size = self.index.count(Some(user_id)).await.unwrap_or(0);
+        if self.config.gating_enabled && signals.decision == RetrievalDecision::Undecided && index_size >= 100 {
             if let Some(ref gate) = self.gate {
                 if !gate.should_retrieve(&primary_vector) {
                     debug!(query = %query, gate = "2-embedding", "retrieval skipped by embedding routing");

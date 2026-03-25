@@ -66,8 +66,12 @@ impl EnginePool {
 
     fn config_for_user(&self, user_id: &str) -> Config {
         let mut config = self.base_config.clone();
-        let user_dir = self.data_dir.join(user_id).join("index");
-        config.index.path = user_dir.to_string_lossy().to_string();
+        // For the "default" user, use the config's original index path
+        // (so local dev mode reads the same data as CLI/MCP)
+        if user_id != "default" {
+            let user_dir = self.data_dir.join(user_id).join("index");
+            config.index.path = user_dir.to_string_lossy().to_string();
+        }
         config
     }
 

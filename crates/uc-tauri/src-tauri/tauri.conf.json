@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri-schema/refs/heads/main/tauri-conf-2.1.0.json",
+  "productName": "Memoryport",
+  "identifier": "com.memoryport.app",
+  "version": "0.1.0",
+  "build": {
+    "frontendDist": "../../../ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ../../../ui && pnpm dev",
+    "beforeBuildCommand": "cd ../../../ui && pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Memoryport",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}

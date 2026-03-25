@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/components/layout.tsx","./src/components/searchbar.tsx","./src/components/sessionlist.tsx","./src/components/statuscard.tsx","./src/lib/api.ts","./src/pages/dashboard.tsx"],"version":"5.9.3"}

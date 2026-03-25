@@ -7,30 +7,35 @@ use uc_embeddings::EmbeddingProvider;
 pub struct RetrievalGate {
     retrieve_centroid: Vec<f32>,
     skip_centroid: Vec<f32>,
+    /// Bias toward retrieval. 0.0 = neutral, positive = favor retrieval.
+    retrieve_bias: f32,
 }
 
-// Exemplar queries that typically need retrieval
+// Exemplar queries that typically need retrieval — mix of memory references AND
+// general knowledge questions that stored context could answer
 const RETRIEVE_EXEMPLARS: &[&str] = &[
+    // Memory references
     "What did we discuss about authentication last week?",
-    "How does the pricing model work?",
     "Can you remind me what we decided about the database?",
     "What was that API endpoint we talked about?",
     "Summarize our conversation from yesterday",
     "What approach did we agree on for the cache layer?",
     "Tell me about the deployment strategy we planned",
-    "What were the performance benchmarks we measured?",
     "How did we solve that memory leak issue?",
-    "What design patterns are used in this codebase?",
-    "Explain the tradeoffs we considered for the storage layer",
-    "What feedback did we get on the proposal?",
-    "How does the encryption scheme work in this system?",
-    "What are the main components of the architecture?",
-    "What were the requirements for the new feature?",
-    "How do users authenticate in the current system?",
-    "What testing strategy did we outline?",
     "Can you recall the error handling approach we discussed?",
+    // General knowledge questions that benefit from stored context
+    "How does the pricing model work?",
+    "What is Verto?",
+    "Explain the architecture of this system",
+    "What are the main components?",
+    "How does the encryption work?",
     "What integrations does the system support?",
     "How does data flow through the pipeline?",
+    "What were the requirements for the new feature?",
+    "How do users authenticate?",
+    "What testing strategy are we using?",
+    "Tell me about the project roadmap",
+    "What technology stack are we using?",
 ];
 
 // Exemplar queries that typically don't need retrieval
@@ -73,11 +78,15 @@ impl RetrievalGate {
         Ok(Self {
             retrieve_centroid,
             skip_centroid,
+            // Bias toward retrieval — it's better to retrieve unnecessarily
+            // (Gate 3 will filter low-quality results) than to miss relevant context.
+            retrieve_bias: 0.05,
         })
     }
 
     /// Given a query embedding, decide if retrieval is likely to be useful.
-    /// Returns true if the query is more similar to "needs retrieval" exemplars.
+    /// Returns true if the query is closer to "needs retrieval" exemplars
+    /// (with a bias toward retrieval to avoid missing relevant context).
     pub fn should_retrieve(&self, query_embedding: &[f32]) -> bool {
         let retrieve_sim = cosine_similarity(query_embedding, &self.retrieve_centroid);
         let skip_sim = cosine_similarity(query_embedding, &self.skip_centroid);
@@ -85,10 +94,11 @@ impl RetrievalGate {
         debug!(
             retrieve_sim = format!("{:.4}", retrieve_sim),
             skip_sim = format!("{:.4}", skip_sim),
+            bias = format!("{:.4}", self.retrieve_bias),
             "gate 2 similarity scores"
         );
 
-        retrieve_sim > skip_sim
+        (retrieve_sim + self.retrieve_bias) > skip_sim
     }
 }
 

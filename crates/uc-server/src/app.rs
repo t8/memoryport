@@ -5,6 +5,7 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
@@ -47,10 +48,15 @@ pub fn build_router(state: Arc<AppState>, metrics_handle: PrometheusHandle) -> R
         ))
         .with_state(state.clone());
 
+    // Serve the React UI (fallback to index.html for SPA client-side routing)
+    let ui_service = ServeDir::new("ui/dist")
+        .not_found_service(ServeFile::new("ui/dist/index.html"));
+
     Router::new()
         .merge(public)
         .nest("/v1", api)
         .nest("/admin", admin)
+        .fallback_service(ui_service)
         .layer(middleware::from_fn(metrics::metrics_middleware))
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,

@@ -7,6 +7,7 @@ members = [
     "crates/uc-mcp",
     "crates/uc-proxy",
     "crates/uc-server",
+    "crates/uc-tauri/src-tauri",
 ]
 resolver = "2"
 
@@ -54,7 +55,7 @@ schemars = "1.0"
 # Web
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "limit", "timeout"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "timeout", "fs"] }
 
 # Crypto
 aes-gcm = "0.10"

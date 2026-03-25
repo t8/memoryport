@@ -105,7 +105,7 @@ pub struct RetrievalConfig {
 }
 
 fn default_true() -> bool { true }
-fn default_min_relevance() -> f32 { 0.3 }
+fn default_min_relevance() -> f32 { -1.0 } // effectively disabled by default; scores depend on distance metric
 
 fn default_max_context_tokens() -> usize {
     50_000

@@ -15,8 +15,9 @@ pub async fn retrieve(
 ) -> Result<Json<RetrieveResponse>, ApiError> {
     let engine = state.pool.get_or_create(&user.user_id).await?;
 
+    // Use direct search (bypasses gating) since the user explicitly asked to search
     let results = engine
-        .retrieve(&req.query, &user.user_id, req.session_id.as_deref())
+        .search(&req.query, &user.user_id, req.top_k)
         .await?;
 
     let results: Vec<RetrieveResult> = results

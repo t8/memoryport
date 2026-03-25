@@ -15,17 +15,30 @@ pub struct AuthenticatedUser {
 }
 
 /// Auth middleware for API endpoints. Validates Bearer token.
+/// If no admin_api_key is configured (local dev mode), allows unauthenticated
+/// access with a default user identity.
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    // Check for auth header
     let api_key = request
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .and_then(|v| v.strip_prefix("Bearer "));
+
+    // If no auth header and no admin key configured → local dev mode (allow through)
+    if api_key.is_none() && state.server_config.admin_api_key.is_none() {
+        request.extensions_mut().insert(AuthenticatedUser {
+            user_id: "default".into(),
+            key_id: "local".into(),
+        });
+        return Ok(next.run(request).await);
+    }
+
+    let api_key = api_key.ok_or(StatusCode::UNAUTHORIZED)?;
 
     if !api_key.starts_with("uc_") {
         return Err(StatusCode::UNAUTHORIZED);
