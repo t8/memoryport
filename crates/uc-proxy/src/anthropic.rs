@@ -95,7 +95,7 @@ pub async fn proxy_messages(
     {
         let engine = state.engine.clone();
         let user_id = state.user_id.clone();
-        let session_id = state.session_id.clone();
+        let session_id = state.sessions.get_session("anthropic").await;
         let msg = last_user_msg.clone();
         tokio::spawn(async move {
             let msg = sanitize_for_storage(&msg);
@@ -259,12 +259,12 @@ async fn forward_raw(
         if assistant_text.len() >= 10 {
             let engine = state.engine.clone();
             let user_id = state.user_id.clone();
-            let session_id = state.session_id.clone();
-            tokio::spawn(async move {
-                let params = uc_core::models::StoreParams {
-                    user_id,
-                    session_id,
-                    chunk_type: uc_core::models::ChunkType::Conversation,
+            let session_id = state.sessions.get_session("anthropic").await;
+                tokio::spawn(async move {
+                    let params = uc_core::models::StoreParams {
+                        user_id,
+                        session_id,
+                        chunk_type: uc_core::models::ChunkType::Conversation,
                     role: Some(uc_core::models::Role::Assistant),
                     source_integration: Some("proxy".into()),
                     source_model: Some(model),

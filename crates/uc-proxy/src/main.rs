@@ -28,10 +28,6 @@ struct Cli {
     /// Default user ID.
     #[arg(long, default_value = "default")]
     user_id: String,
-
-    /// Default session ID.
-    #[arg(long, default_value = "default")]
-    session_id: String,
 }
 
 #[tokio::main]
@@ -57,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         engine,
         http: reqwest::Client::new(),
         user_id: cli.user_id,
-        session_id: cli.session_id,
+        sessions: routes::SessionManager::new(1800), // 30 min inactivity = new session
         context_budget: 50_000,
     });
 

@@ -1,15 +1,66 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{debug, warn};
 
 pub struct ProxyState {
     pub engine: Arc<uc_core::Engine>,
     pub http: reqwest::Client,
     pub user_id: String,
-    pub session_id: String,
+    pub sessions: SessionManager,
     pub context_budget: u32,
+}
+
+/// Manages session IDs per source. Creates a new session after 30 minutes of inactivity.
+pub struct SessionManager {
+    active: Mutex<HashMap<String, ActiveSession>>,
+    inactivity_timeout_secs: u64,
+}
+
+struct ActiveSession {
+    session_id: String,
+    last_activity: std::time::Instant,
+}
+
+impl SessionManager {
+    pub fn new(inactivity_timeout_secs: u64) -> Self {
+        Self {
+            active: Mutex::new(HashMap::new()),
+            inactivity_timeout_secs,
+        }
+    }
+
+    /// Get or create a session ID for a given source (e.g., "anthropic", "openai", "ollama").
+    /// Rotates to a new session after inactivity timeout.
+    pub async fn get_session(&self, source: &str) -> String {
+        let mut sessions = self.active.lock().await;
+        let now = std::time::Instant::now();
+
+        if let Some(active) = sessions.get_mut(source) {
+            if now.duration_since(active.last_activity).as_secs() < self.inactivity_timeout_secs {
+                active.last_activity = now;
+                return active.session_id.clone();
+            }
+        }
+
+        // Create new session
+        let session_id = format!(
+            "{}-{}",
+            source,
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        );
+        sessions.insert(
+            source.to_string(),
+            ActiveSession {
+                session_id: session_id.clone(),
+                last_activity: now,
+            },
+        );
+        session_id
+    }
 }
 
 /// Detect upstream from model name in request.
@@ -106,7 +157,7 @@ pub async fn proxy_completions(
     {
         let engine = state.engine.clone();
         let user_id = state.user_id.clone();
-        let session_id = state.session_id.clone();
+        let session_id = state.sessions.get_session("openai").await;
         let msg = last_user_msg;
         tokio::spawn(async move {
             let msg = crate::anthropic::sanitize_for_storage_pub(&msg);
@@ -210,7 +261,7 @@ async fn forward_openai_raw(
             if assistant_text.len() >= 10 {
                 let engine = state.engine.clone();
                 let user_id = state.user_id.clone();
-                let session_id = state.session_id.clone();
+                let session_id = state.sessions.get_session("openai").await;
                 let model = resp_json
                     .get("model")
                     .and_then(|m| m.as_str())
@@ -403,7 +454,7 @@ pub async fn forward_ollama_any(
         if user_msg_clean.len() >= 10 {
             let engine = state.engine.clone();
             let uid = state.user_id.clone();
-            let sid = state.session_id.clone();
+            let sid = state.sessions.get_session("ollama").await;
             let m = model_clone.clone();
             let msg = user_msg_clean;
             tokio::spawn(async move {
@@ -423,7 +474,7 @@ pub async fn forward_ollama_any(
         if assistant_clean.len() >= 10 {
             let engine = state.engine.clone();
             let uid = state.user_id.clone();
-            let sid = state.session_id.clone();
+            let sid = state.sessions.get_session("ollama").await;
             let m = model_clone;
             tokio::spawn(async move {
                 let params = uc_core::models::StoreParams {
