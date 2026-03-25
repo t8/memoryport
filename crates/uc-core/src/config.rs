@@ -96,7 +96,16 @@ pub struct RetrievalConfig {
     pub llm_provider: Option<String>,
     /// LLM model for query expansion / HyDE (e.g., "gpt-4o-mini").
     pub llm_model: Option<String>,
+    /// Enable retrieval gating (skip retrieval for greetings, commands, etc.)
+    #[serde(default = "default_true")]
+    pub gating_enabled: bool,
+    /// Minimum relevance score to include results (Gate 3). Results below this are dropped.
+    #[serde(default = "default_min_relevance")]
+    pub min_relevance_score: f32,
 }
+
+fn default_true() -> bool { true }
+fn default_min_relevance() -> f32 { 0.3 }
 
 fn default_max_context_tokens() -> usize {
     50_000
@@ -121,6 +130,8 @@ impl Default for RetrievalConfig {
             hyde: false,
             llm_provider: None,
             llm_model: None,
+            gating_enabled: true,
+            min_relevance_score: 0.3,
         }
     }
 }

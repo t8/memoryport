@@ -165,9 +165,27 @@ impl Default for QueryParams {
     }
 }
 
+/// Whether the gating system thinks retrieval is needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetrievalDecision {
+    /// Gate 1 determined retrieval should be skipped (greeting, command, etc.)
+    Skip,
+    /// Gate 1 determined retrieval is definitely needed (memory reference, temporal, etc.)
+    Force,
+    /// Gate 1 couldn't decide — pass to Gate 2 (embedding routing)
+    Undecided,
+}
+
+impl Default for RetrievalDecision {
+    fn default() -> Self {
+        Self::Undecided
+    }
+}
+
 /// Signals extracted from a user query by the analyzer.
 #[derive(Debug, Clone, Default)]
 pub struct QuerySignals {
+    pub decision: RetrievalDecision,
     pub temporal_range: Option<(i64, i64)>,
     pub explicit_session: Option<String>,
     pub is_recency_heavy: bool,

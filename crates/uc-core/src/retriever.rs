@@ -1,8 +1,9 @@
 use crate::analyzer;
 use crate::config::RetrievalConfig;
 use crate::enhancer::QueryEnhancer;
+use crate::gate::RetrievalGate;
 use crate::index::Index;
-use crate::models::{QueryParams, SearchResult};
+use crate::models::{QueryParams, RetrievalDecision, SearchResult};
 use std::collections::HashSet;
 use std::sync::Arc;
 use thiserror::Error;
@@ -19,11 +20,12 @@ pub enum RetrieverError {
     Enhancer(#[from] crate::enhancer::EnhancerError),
 }
 
-/// Multi-strategy retriever combining vector search, recency, metadata, and query enhancement.
+/// Multi-strategy retriever with three-gate gating system.
 pub struct Retriever {
     index: Arc<Index>,
     embeddings: Arc<dyn EmbeddingProvider>,
     enhancer: Option<Arc<dyn QueryEnhancer>>,
+    gate: Option<RetrievalGate>,
     config: RetrievalConfig,
 }
 
@@ -37,6 +39,7 @@ impl Retriever {
             index,
             embeddings,
             enhancer: None,
+            gate: None,
             config,
         }
     }
@@ -46,14 +49,37 @@ impl Retriever {
         self
     }
 
-    /// Run the full retrieval pipeline: enhance → analyze → multi-strategy search → merge → dedup.
+    pub fn with_gate(mut self, gate: RetrievalGate) -> Self {
+        self.gate = Some(gate);
+        self
+    }
+
+    /// Run the full retrieval pipeline with three-gate gating.
     pub async fn retrieve(
         &self,
         query: &str,
         user_id: &str,
         active_session_id: Option<&str>,
     ) -> Result<Vec<SearchResult>, RetrieverError> {
-        // 1. Enhance query (expansion + HyDE)
+        // ── Gate 1: Rule-based ──
+        let signals = analyzer::analyze_query(query);
+
+        if self.config.gating_enabled {
+            match signals.decision {
+                RetrievalDecision::Skip => {
+                    debug!(query = %query, gate = "1-rules", "retrieval skipped");
+                    return Ok(Vec::new());
+                }
+                RetrievalDecision::Force => {
+                    debug!(query = %query, gate = "1-rules", "retrieval forced");
+                }
+                RetrievalDecision::Undecided => {
+                    debug!(query = %query, gate = "1-rules", "undecided, proceeding to gate 2");
+                }
+            }
+        }
+
+        // Enhance query (expansion + HyDE) — only if not skipped
         let enhanced = if let Some(ref enhancer) = self.enhancer {
             enhancer.enhance(query).await?
         } else {
@@ -64,15 +90,25 @@ impl Retriever {
             }
         };
 
-        // 2. Analyze query for signals
-        let signals = analyzer::analyze_query(query);
-        debug!(?signals, expansions = enhanced.expanded_queries.len(), hyde = enhanced.hyde_document.is_some(), "query analysis complete");
-
-        let mut candidates = Vec::new();
-
-        // 3. Primary vector search — use HyDE document if available, otherwise raw query
+        // Embed the primary query
         let primary_text = enhanced.hyde_document.as_deref().unwrap_or(query);
         let primary_vector = self.embeddings.embed(primary_text).await?;
+
+        // ── Gate 2: Embedding routing ──
+        if self.config.gating_enabled && signals.decision == RetrievalDecision::Undecided {
+            if let Some(ref gate) = self.gate {
+                if !gate.should_retrieve(&primary_vector) {
+                    debug!(query = %query, gate = "2-embedding", "retrieval skipped by embedding routing");
+                    return Ok(Vec::new());
+                }
+                debug!(query = %query, gate = "2-embedding", "retrieval approved by embedding routing");
+            }
+        }
+
+        // ── Search ──
+        let mut candidates = Vec::new();
+
+        // Primary vector search
         let vector_params = QueryParams {
             user_id: user_id.to_string(),
             top_k: self.config.similarity_top_k,
@@ -81,15 +117,15 @@ impl Retriever {
             time_range: signals.temporal_range,
         };
         let primary_results = self.index.search(&primary_vector, &vector_params).await?;
-        debug!(count = primary_results.len(), hyde = enhanced.hyde_document.is_some(), "primary vector search results");
+        debug!(count = primary_results.len(), "primary vector search results");
         candidates.extend(primary_results);
 
-        // 4. Expanded query searches
+        // Expanded query searches
         for expanded in &enhanced.expanded_queries {
             let exp_vector = self.embeddings.embed(expanded).await?;
             let exp_params = QueryParams {
                 user_id: user_id.to_string(),
-                top_k: self.config.similarity_top_k / 3, // fewer results per expansion
+                top_k: self.config.similarity_top_k / 3,
                 session_id: None,
                 chunk_type: None,
                 time_range: signals.temporal_range,
@@ -99,23 +135,19 @@ impl Retriever {
             candidates.extend(exp_results);
         }
 
-        // 5. Recency window (last N chunks from active session)
+        // Recency window
         if let Some(session_id) = active_session_id {
             let recency_limit = if signals.is_recency_heavy {
                 self.config.recency_window * 2
             } else {
                 self.config.recency_window
             };
-
-            let recency_results = self
-                .index
-                .get_recent(user_id, session_id, recency_limit)
-                .await?;
+            let recency_results = self.index.get_recent(user_id, session_id, recency_limit).await?;
             debug!(count = recency_results.len(), "recency window results");
             candidates.extend(recency_results);
         }
 
-        // 6. Explicit session lookup
+        // Explicit session lookup
         if let Some(ref explicit_sid) = signals.explicit_session {
             if active_session_id.map_or(true, |s| s != explicit_sid) {
                 let session_params = QueryParams {
@@ -131,18 +163,30 @@ impl Retriever {
             }
         }
 
-        // 7. Deduplicate by chunk_id
+        // Deduplicate
         let deduped = dedup_by_chunk_id(candidates);
-        debug!(total = deduped.len(), "deduplicated candidates");
 
+        // ── Gate 3: Post-retrieval quality check ──
+        if self.config.gating_enabled && self.config.min_relevance_score > 0.0 {
+            let best_score = deduped.first().map(|r| r.score).unwrap_or(0.0);
+            if best_score < self.config.min_relevance_score {
+                debug!(
+                    best_score = format!("{:.4}", best_score),
+                    threshold = format!("{:.4}", self.config.min_relevance_score),
+                    gate = "3-quality",
+                    "results below quality threshold, dropping all"
+                );
+                return Ok(Vec::new());
+            }
+        }
+
+        debug!(total = deduped.len(), "final results after gating");
         Ok(deduped)
     }
 }
 
-/// Remove duplicate results, keeping the one with the highest score.
 fn dedup_by_chunk_id(mut results: Vec<SearchResult>) -> Vec<SearchResult> {
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
     let mut seen = HashSet::new();
     results
         .into_iter()

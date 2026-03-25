@@ -5,6 +5,7 @@ pub mod chunker;
 pub mod config;
 pub mod crypto;
 pub mod enhancer;
+pub mod gate;
 pub mod index;
 pub mod keystore;
 pub mod models;
@@ -169,6 +170,22 @@ impl Engine {
         };
 
         // Create retriever
+        // Initialize retrieval gate (Gate 2: embedding routing)
+        let retrieval_gate = if config.retrieval.gating_enabled {
+            match gate::RetrievalGate::init(embeddings.as_ref()).await {
+                Ok(g) => {
+                    info!("retrieval gate initialized");
+                    Some(g)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to init retrieval gate, gating disabled");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let mut retriever = Retriever::new(
             index.clone(),
             embeddings.clone(),
@@ -176,6 +193,9 @@ impl Engine {
         );
         if let Some(e) = enhancer {
             retriever = retriever.with_enhancer(e);
+        }
+        if let Some(g) = retrieval_gate {
+            retriever = retriever.with_gate(g);
         }
 
         // Create reranker
