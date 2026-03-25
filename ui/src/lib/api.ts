@@ -57,6 +57,8 @@ export interface SessionChunk {
   role: string | null;
   content: string;
   timestamp: number;
+  source_integration: string | null;
+  source_model: string | null;
 }
 
 // ── API Functions ──

@@ -90,6 +90,8 @@ pub struct SessionChunk {
     pub role: Option<String>,
     pub content: String,
     pub timestamp: i64,
+    pub source_integration: Option<String>,
+    pub source_model: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

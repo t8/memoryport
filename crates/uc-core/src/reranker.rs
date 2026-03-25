@@ -204,6 +204,8 @@ mod tests {
             content: content.into(),
             score,
             arweave_tx_id: "tx".into(),
+            source_integration: None,
+            source_model: None,
         }
     }
 

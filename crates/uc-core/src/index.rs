@@ -380,6 +380,11 @@ fn parse_search_results(batch: &RecordBatch) -> Result<Vec<SearchResult>, IndexE
         .column_by_name("_distance")
         .and_then(|c| c.as_any().downcast_ref::<arrow_array::Float32Array>());
 
+    // Parse source info from metadata_json column
+    let metadata_jsons = batch
+        .column_by_name("metadata_json")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
     let mut results = Vec::with_capacity(n);
     for i in 0..n {
         let chunk_type: ChunkType = chunk_types.value(i).parse().unwrap_or(ChunkType::Conversation);
@@ -387,6 +392,17 @@ fn parse_search_results(batch: &RecordBatch) -> Result<Vec<SearchResult>, IndexE
             .and_then(|r| if r.is_null(i) { None } else { Some(r.value(i)) })
             .and_then(|s| s.parse().ok());
         let score = distances.map(|d| 1.0 - d.value(i)).unwrap_or(0.0);
+
+        // Extract source from metadata JSON
+        let (source_integration, source_model) = metadata_jsons
+            .and_then(|m| if m.is_null(i) { None } else { Some(m.value(i)) })
+            .and_then(|json_str| serde_json::from_str::<serde_json::Value>(json_str).ok())
+            .map(|v| {
+                let si = v.get("source_integration").and_then(|s| s.as_str()).map(|s| s.to_string());
+                let sm = v.get("source_model").and_then(|s| s.as_str()).map(|s| s.to_string());
+                (si, sm)
+            })
+            .unwrap_or((None, None));
 
         results.push(SearchResult {
             chunk_id: chunk_ids.value(i).to_string(),
@@ -397,6 +413,8 @@ fn parse_search_results(batch: &RecordBatch) -> Result<Vec<SearchResult>, IndexE
             content: contents.value(i).to_string(),
             score,
             arweave_tx_id: tx_ids.value(i).to_string(),
+            source_integration,
+            source_model,
         });
     }
 

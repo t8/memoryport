@@ -134,8 +134,15 @@ export default function Dashboard() {
                         : "text-emerald-400"
                     }`}
                   >
-                    {chunk.role || "unknown"}
+                    {chunk.role === "assistant" && chunk.source_model
+                      ? chunk.source_model
+                      : chunk.role || "unknown"}
                   </span>
+                  {chunk.source_integration && (
+                    <span className="text-xs text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
+                      {chunk.source_integration}
+                    </span>
+                  )}
                   <span className="text-xs text-zinc-600">
                     {new Date(chunk.timestamp).toLocaleString()}
                   </span>

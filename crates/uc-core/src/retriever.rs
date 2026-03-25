@@ -214,6 +214,8 @@ mod tests {
                 content: "hello".into(),
                 score: 0.9,
                 arweave_tx_id: "tx1".into(),
+                source_integration: None,
+                source_model: None,
             },
             SearchResult {
                 chunk_id: "a".into(),
@@ -224,6 +226,8 @@ mod tests {
                 content: "hello".into(),
                 score: 0.5,
                 arweave_tx_id: "tx1".into(),
+                source_integration: None,
+                source_model: None,
             },
             SearchResult {
                 chunk_id: "b".into(),
@@ -234,6 +238,8 @@ mod tests {
                 content: "world".into(),
                 score: 0.8,
                 arweave_tx_id: "tx1".into(),
+                source_integration: None,
+                source_model: None,
             },
         ];
         let deduped = dedup_by_chunk_id(results);

@@ -47,6 +47,8 @@ pub async fn get_session(
                 role: c.role.map(|r| r.as_str().to_string()),
                 content: c.content,
                 timestamp: c.timestamp,
+                source_integration: c.source_integration,
+                source_model: c.source_model,
             })
             .collect(),
     }))

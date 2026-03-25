@@ -1,11 +1,8 @@
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
-
-use crate::models::{ChatCompletionsRequest, Message};
+use tracing::{debug, warn};
 
 pub struct ProxyState {
     pub engine: Arc<uc_core::Engine>,
@@ -15,133 +12,233 @@ pub struct ProxyState {
     pub context_budget: u32,
 }
 
-/// POST /v1/chat/completions — intercept, inject context, forward, store response.
+/// Detect upstream from model name in request.
+fn detect_upstream(request: &serde_json::Value) -> &'static str {
+    let model = request
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or("");
+
+    if model.starts_with("gpt-") || model.starts_with("o1") || model.starts_with("o3") || model.starts_with("text-") {
+        "https://api.openai.com"
+    } else if model.starts_with("llama")
+        || model.starts_with("mistral")
+        || model.starts_with("codellama")
+        || model.starts_with("gemma")
+        || model.starts_with("phi")
+        || model.starts_with("qwen")
+        || model.starts_with("deepseek")
+        || model.starts_with("nomic")
+        || model.contains(":")
+    {
+        // Ollama models typically have a colon (e.g., "llama3:8b") or are open-source model names
+        "http://localhost:11434"
+    } else {
+        // Default to OpenAI
+        "https://api.openai.com"
+    }
+}
+
+/// POST /v1/chat/completions — OpenAI-compatible proxy with auto-routing.
+/// Routes to OpenAI, Ollama, or any OpenAI-compatible endpoint based on model name.
 pub async fn proxy_completions(
     State(state): State<Arc<ProxyState>>,
-    Json(mut request): Json<ChatCompletionsRequest>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
 ) -> Result<Response, StatusCode> {
-    // 1. Extract the last user message
-    let last_user_msg = request
-        .messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user")
-        .map(|m| m.content.clone())
-        .unwrap_or_default();
+    let mut request: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
+        warn!(error = %e, "failed to parse request body");
+        StatusCode::BAD_REQUEST
+    })?;
+
+    // Detect upstream
+    let upstream = detect_upstream(&request);
+
+    // Extract last user message
+    let last_user_msg = extract_last_user_text(&request);
 
     if last_user_msg.is_empty() {
-        // No user message — forward as-is
-        return forward_request(&state, &request).await;
+        return forward_openai_raw(&state, &headers, &body, upstream).await;
     }
 
-    debug!(query = %last_user_msg, "extracting context for user message");
+    debug!(query_len = last_user_msg.len(), upstream = upstream, "processing OpenAI-format request");
 
-    // 2. Search for relevant context (bypasses gating — proxy always searches)
-    let context = match state
-        .engine
-        .search(&last_user_msg, &state.user_id, 20)
-        .await
-    {
-        Ok(results) if !results.is_empty() => {
-            Some(uc_core::assembler::assemble_context(&results, state.context_budget))
+    let clean_query = crate::anthropic::sanitize_query_pub(&last_user_msg);
+
+    // Search for context (best-effort)
+    let context = match state.engine.search(&clean_query, &state.user_id, 20).await {
+        Ok(ref results) => {
+            let clean: Vec<_> = results
+                .iter()
+                .filter(|r| !crate::anthropic::is_system_prompt_leak_pub(&r.content))
+                .cloned()
+                .collect();
+            if clean.is_empty() {
+                None
+            } else {
+                Some(uc_core::assembler::assemble_context(&clean, state.context_budget))
+            }
         }
-        Ok(_) => None,
         Err(e) => {
-            warn!(error = %e, "context retrieval failed, forwarding without context");
+            warn!(error = %e, "context retrieval failed");
             None
         }
     };
 
-    // 3. Inject context as a system message at the beginning
+    // Inject context into last user message
     if let Some(ref ctx) = context {
         if ctx.chunks_included > 0 {
-            info!(
-                chunks = ctx.chunks_included,
-                tokens = ctx.token_count,
-                "injecting context"
+            let plain_context = crate::anthropic::format_plain_context(&ctx.formatted);
+            let suffix = format!(
+                "\n\nFor additional context, here is information from my previous conversations:\n\n{}\n\nPlease use the above context to answer my question.",
+                plain_context
             );
-
-            let context_msg = Message {
-                role: "system".into(),
-                content: format!(
-                    "The following is relevant context from the user's stored memory:\n\n{}",
-                    ctx.formatted
-                ),
-            };
-
-            let insert_pos = request
-                .messages
-                .iter()
-                .position(|m| m.role != "system")
-                .unwrap_or(0);
-            request.messages.insert(insert_pos, context_msg);
+            append_to_last_user_message(&mut request, &suffix);
         }
     }
 
-    // 4. Forward to upstream
-    let response = forward_request(&state, &request).await?;
+    // Forward
+    let modified_body = serde_json::to_vec(&request).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let response = forward_openai_raw(&state, &headers, &modified_body, upstream).await?;
 
-    // 5. Store the user message (async, don't block response)
-    let engine = state.engine.clone();
-    let user_id = state.user_id.clone();
-    let session_id = state.session_id.clone();
-    let user_msg = last_user_msg.clone();
-    tokio::spawn(async move {
-        let params = uc_core::models::StoreParams {
-            user_id,
-            session_id,
-            chunk_type: uc_core::models::ChunkType::Conversation,
-            role: Some(uc_core::models::Role::User),
-            source_integration: Some("proxy".into()),
-            source_model: None,
-        };
-        if let Err(e) = engine.store(&user_msg, params).await {
-            warn!(error = %e, "failed to store user message");
-        }
-    });
+    // Store user message (async)
+    let model = request.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string();
+    {
+        let engine = state.engine.clone();
+        let user_id = state.user_id.clone();
+        let session_id = state.session_id.clone();
+        let msg = last_user_msg;
+        tokio::spawn(async move {
+            let msg = crate::anthropic::sanitize_for_storage_pub(&msg);
+            if msg.len() < 10 { return; }
+            let params = uc_core::models::StoreParams {
+                user_id,
+                session_id,
+                chunk_type: uc_core::models::ChunkType::Conversation,
+                role: Some(uc_core::models::Role::User),
+                source_integration: Some("proxy".into()),
+                source_model: Some(model),
+            };
+            let _ = engine.store(&msg, params).await;
+            let _ = engine.flush().await;
+        });
+    }
 
     Ok(response)
 }
 
-const OPENAI_UPSTREAM: &str = "https://api.openai.com";
+fn extract_last_user_text(request: &serde_json::Value) -> String {
+    let messages = match request.get("messages").and_then(|m| m.as_array()) {
+        Some(m) => m,
+        None => return String::new(),
+    };
+    for msg in messages.iter().rev() {
+        if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
+            continue;
+        }
+        if let Some(s) = msg.get("content").and_then(|c| c.as_str()) {
+            return s.to_string();
+        }
+    }
+    String::new()
+}
 
-async fn forward_request(
+fn append_to_last_user_message(request: &mut serde_json::Value, suffix: &str) {
+    let messages = match request.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        Some(m) => m,
+        None => return,
+    };
+    for msg in messages.iter_mut().rev() {
+        if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
+            continue;
+        }
+        if let Some(s) = msg.get("content").and_then(|c| c.as_str()).map(|s| s.to_string()) {
+            msg["content"] = serde_json::Value::String(format!("{}{}", s, suffix));
+            return;
+        }
+        break;
+    }
+}
+
+async fn forward_openai_raw(
     state: &ProxyState,
-    request: &ChatCompletionsRequest,
+    original_headers: &HeaderMap,
+    body: &[u8],
+    upstream: &str,
 ) -> Result<Response, StatusCode> {
-    let url = format!("{}/v1/chat/completions", OPENAI_UPSTREAM);
+    let url = format!("{}/v1/chat/completions", upstream);
 
-    let upstream_resp = state
+    let mut req_builder = state
         .http
         .post(&url)
-        .json(request)
-        .send()
-        .await
-        .map_err(|e| {
-            warn!(error = %e, "failed to forward to upstream");
-            StatusCode::BAD_GATEWAY
-        })?;
+        .header("content-type", "application/json")
+        .body(body.to_vec());
+
+    // Forward auth headers
+    for (name, value) in original_headers.iter() {
+        let n = name.as_str();
+        if n == "authorization" || n == "x-api-key" {
+            req_builder = req_builder.header(name, value);
+        }
+    }
+
+    let upstream_resp = req_builder.send().await.map_err(|e| {
+        warn!(error = %e, upstream = upstream, "failed to forward to upstream");
+        StatusCode::BAD_GATEWAY
+    })?;
 
     let status = StatusCode::from_u16(upstream_resp.status().as_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    let headers = upstream_resp.headers().clone();
-    let body = upstream_resp.bytes().await.map_err(|e| {
+    let resp_headers = upstream_resp.headers().clone();
+    let body_bytes = upstream_resp.bytes().await.map_err(|e| {
         warn!(error = %e, "failed to read upstream response");
         StatusCode::BAD_GATEWAY
     })?;
 
-    let mut response = (status, body).into_response();
-    // Copy content-type from upstream
-    if let Some(ct) = headers.get("content-type") {
-        response
-            .headers_mut()
-            .insert("content-type", ct.clone());
+    // Store assistant response (best-effort)
+    if status.is_success() {
+        if let Ok(resp_json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+            let assistant_text = resp_json
+                .get("choices")
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.get("message"))
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            let assistant_text = crate::anthropic::sanitize_for_storage_pub(&assistant_text);
+            if assistant_text.len() >= 10 {
+                let engine = state.engine.clone();
+                let user_id = state.user_id.clone();
+                let session_id = state.session_id.clone();
+                let model = resp_json
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                tokio::spawn(async move {
+                    let params = uc_core::models::StoreParams {
+                        user_id,
+                        session_id,
+                        chunk_type: uc_core::models::ChunkType::Conversation,
+                        role: Some(uc_core::models::Role::Assistant),
+                        source_integration: Some("proxy".into()),
+                        source_model: Some(model),
+                    };
+                    let _ = engine.store(&assistant_text, params).await;
+                    let _ = engine.flush().await;
+                });
+            }
+        }
     }
 
+    let mut response = (status, body_bytes).into_response();
+    if let Some(ct) = resp_headers.get("content-type") {
+        response.headers_mut().insert("content-type", ct.clone());
+    }
     Ok(response)
 }
 
-/// Health check endpoint.
 pub async fn health() -> &'static str {
     "ok"
 }

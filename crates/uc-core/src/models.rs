@@ -226,6 +226,8 @@ pub struct SearchResult {
     pub content: String,
     pub score: f32,
     pub arweave_tx_id: String,
+    pub source_integration: Option<String>,
+    pub source_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
