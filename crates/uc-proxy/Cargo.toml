@@ -24,3 +24,4 @@ futures = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+dirs = "6"

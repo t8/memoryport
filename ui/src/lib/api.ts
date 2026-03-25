@@ -107,6 +107,7 @@ export async function retrieve(
 export interface IntegrationsStatus {
   mcp: { enabled: boolean; status: string };
   proxy: { enabled: boolean; status: string };
+  ollama: { enabled: boolean; status: string };
   arweave: { enabled: boolean; status: string };
 }
 

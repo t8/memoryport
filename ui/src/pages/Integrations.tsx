@@ -64,6 +64,7 @@ export default function Integrations() {
 
   const mcpEnabled = integrations?.mcp.enabled ?? false;
   const proxyEnabled = integrations?.proxy.enabled ?? false;
+  const ollamaEnabled = integrations?.ollama.enabled ?? false;
   const arweaveEnabled = integrations?.arweave.enabled ?? false;
 
   return (
@@ -167,6 +168,50 @@ export default function Integrations() {
               <div>
                 <span className="text-zinc-500">OpenAI</span>
                 <p className="text-zinc-300 mt-0.5">/v1/chat/completions</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Ollama Intercept */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <Cpu size={18} className="text-zinc-400" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-medium text-sm">Ollama Auto-Capture</h3>
+                  <Tooltip content="When enabled, Memoryport transparently intercepts all Ollama traffic. Ollama moves to port 11435 and the proxy takes over port 11434 — every existing Ollama client works automatically with no config changes. All conversations are captured and searchable." />
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {ollamaEnabled
+                    ? "Intercepting all Ollama traffic on port 11434"
+                    : "Transparent memory capture for all local Ollama models"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <StatusBadge status={ollamaEnabled ? "operational" : "unconfigured"} />
+              {toggling === "ollama" ? (
+                <Loader2 size={18} className="animate-spin text-zinc-400" />
+              ) : (
+                <Toggle enabled={ollamaEnabled} onChange={(v) => handleToggle("ollama", v)} />
+              )}
+            </div>
+          </div>
+          {ollamaEnabled && (
+            <div className="mt-3 pt-3 border-t border-zinc-800 grid grid-cols-3 gap-4 text-xs">
+              <div>
+                <span className="text-zinc-500">Proxy port</span>
+                <p className="text-zinc-300 mt-0.5">11434 (default)</p>
+              </div>
+              <div>
+                <span className="text-zinc-500">Ollama port</span>
+                <p className="text-zinc-300 mt-0.5">11435 (moved)</p>
+              </div>
+              <div>
+                <span className="text-zinc-500">Client config</span>
+                <p className="text-zinc-300 mt-0.5">None needed</p>
               </div>
             </div>
           )}

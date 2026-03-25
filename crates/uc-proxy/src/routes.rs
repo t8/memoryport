@@ -31,8 +31,16 @@ fn detect_upstream(request: &serde_json::Value) -> &'static str {
         || model.starts_with("nomic")
         || model.contains(":")
     {
-        // Ollama models typically have a colon (e.g., "llama3:8b") or are open-source model names
-        "http://localhost:11434"
+        // Ollama models — check if intercept is active (Ollama moved to 11435)
+        let marker = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".memoryport")
+            .join("ollama-intercept.active");
+        if marker.exists() {
+            "http://localhost:11435"
+        } else {
+            "http://localhost:11434"
+        }
     } else {
         // Default to OpenAI
         "https://api.openai.com"

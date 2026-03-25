@@ -10,6 +10,7 @@ use crate::state::AppState;
 pub struct IntegrationsStatus {
     pub mcp: IntegrationState,
     pub proxy: IntegrationState,
+    pub ollama: IntegrationState,
     pub arweave: IntegrationState,
 }
 
@@ -44,6 +45,9 @@ pub async fn get_integrations(
     // (more reliable than health check which races startup)
     let proxy_enabled = check_proxy_configured();
 
+    // Check Ollama: is the proxy intercepting on port 11434?
+    let ollama_enabled = check_ollama_intercept_active().await;
+
     // Check Arweave: is wallet configured?
     let arweave_enabled = config.arweave.wallet_path.is_some();
 
@@ -55,6 +59,10 @@ pub async fn get_integrations(
         proxy: IntegrationState {
             enabled: proxy_enabled,
             status: if proxy_enabled { "operational".into() } else { "unconfigured".into() },
+        },
+        ollama: IntegrationState {
+            enabled: ollama_enabled,
+            status: if ollama_enabled { "operational".into() } else { "unconfigured".into() },
         },
         arweave: IntegrationState {
             enabled: arweave_enabled,
@@ -71,6 +79,7 @@ pub async fn toggle_integration(
     match req.integration.as_str() {
         "mcp" => toggle_mcp(req.enabled),
         "proxy" => toggle_proxy(req.enabled, state.pool.base_config()).await,
+        "ollama" => toggle_ollama(req.enabled).await,
         "arweave" => Ok(ToggleResponse {
             success: false,
             message: "Arweave requires a wallet. Configure wallet_path in settings.".into(),
@@ -224,6 +233,135 @@ async fn toggle_proxy(
             "Proxy stopped and ANTHROPIC_BASE_URL removed. Restart Claude Code to deactivate.".into()
         },
     })
+}
+
+/// Check if the proxy is intercepting on Ollama's default port (11434).
+/// We detect this by hitting :11434/health — if it responds with "ok" it's our proxy.
+/// Real Ollama responds with a different format.
+async fn check_ollama_intercept_active() -> bool {
+    // Check if something is on 11434 that identifies as our proxy
+    let memoryport_marker = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".memoryport")
+        .join("ollama-intercept.active");
+    memoryport_marker.exists()
+}
+
+const OLLAMA_DEFAULT_PORT: u16 = 11434;
+const OLLAMA_MOVED_PORT: u16 = 11435;
+
+async fn toggle_ollama(enabled: bool) -> Result<ToggleResponse, ApiError> {
+    let marker = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".memoryport")
+        .join("ollama-intercept.active");
+
+    if enabled {
+        // Step 1: Check if Ollama is running on default port
+        let ollama_running = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{OLLAMA_DEFAULT_PORT}"))
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+            .is_ok();
+
+        if !ollama_running {
+            return Ok(ToggleResponse {
+                success: false,
+                message: "Ollama is not running on port 11434. Start Ollama first.".into(),
+            });
+        }
+
+        // Step 2: Stop Ollama, restart it on the moved port
+        // On macOS, Ollama runs as a background app. We set OLLAMA_HOST env for it.
+        // The standard approach: stop ollama, set env, restart.
+        #[cfg(target_os = "macos")]
+        {
+            // Stop Ollama
+            let _ = std::process::Command::new("pkill").arg("-f").arg("ollama").status();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+
+            // Restart Ollama on the moved port
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!(
+                    "OLLAMA_HOST=127.0.0.1:{OLLAMA_MOVED_PORT} nohup ollama serve > /dev/null 2>&1 &"
+                ))
+                .status();
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = std::process::Command::new("pkill").arg("-f").arg("ollama").status();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!(
+                    "OLLAMA_HOST=127.0.0.1:{OLLAMA_MOVED_PORT} nohup ollama serve > /dev/null 2>&1 &"
+                ))
+                .status();
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+
+        // Step 3: Start the proxy on port 11434 (Ollama's default) forwarding to 11435
+        let proxy_bin = find_uc_proxy_binary();
+        let config_path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".memoryport")
+            .join("uc.toml")
+            .to_string_lossy()
+            .to_string();
+
+        std::process::Command::new(&proxy_bin)
+            .arg("--config")
+            .arg(&config_path)
+            .arg("--listen")
+            .arg(format!("127.0.0.1:{OLLAMA_DEFAULT_PORT}"))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| ApiError::Internal(format!("Failed to start proxy on 11434: {e}")))?;
+
+        // Write marker file
+        let _ = std::fs::write(&marker, "active");
+
+        Ok(ToggleResponse {
+            success: true,
+            message: format!(
+                "Ollama moved to port {OLLAMA_MOVED_PORT}. Memoryport proxy now intercepts on port {OLLAMA_DEFAULT_PORT}. All Ollama clients work automatically."
+            ),
+        })
+    } else {
+        // Step 1: Kill the proxy on 11434
+        #[cfg(unix)]
+        {
+            // Find and kill the proxy listening on 11434
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("lsof -ti:11434 | xargs kill 2>/dev/null")
+                .status();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+
+        // Step 2: Stop Ollama on moved port, restart on default
+        let _ = std::process::Command::new("pkill").arg("-f").arg("ollama").status();
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("nohup ollama serve > /dev/null 2>&1 &")
+            .status();
+
+        // Remove marker
+        let _ = std::fs::remove_file(&marker);
+
+        Ok(ToggleResponse {
+            success: true,
+            message: "Ollama restored to default port 11434. Proxy intercept disabled.".into(),
+        })
+    }
 }
 
 fn check_mcp_registered() -> bool {

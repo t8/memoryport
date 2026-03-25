@@ -8721,6 +8721,7 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "dirs 6.0.0",
  "futures",
  "reqwest 0.12.28",
  "serde",
