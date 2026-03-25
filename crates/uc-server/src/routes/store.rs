@@ -23,6 +23,8 @@ pub async fn store(
         session_id: req.session_id,
         chunk_type,
         role,
+        source_integration: Some("api".into()),
+        source_model: None,
     };
 
     let ids = engine.store(&req.text, params).await?;

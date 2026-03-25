@@ -105,6 +105,8 @@ impl UcMcpServer {
             session_id,
             chunk_type: uc_core::models::ChunkType::Conversation,
             role,
+            source_integration: Some("mcp".into()),
+            source_model: None,
         };
 
         match self.engine.store(&params.content, store_params).await {
@@ -136,6 +138,8 @@ impl UcMcpServer {
             session_id,
             chunk_type,
             role,
+            source_integration: Some("mcp".into()),
+            source_model: None,
         };
 
         match self.engine.store(&params.text, store_params).await {
@@ -159,6 +163,8 @@ impl UcMcpServer {
                 session_id: params.session_id.clone().unwrap_or_else(|| "default".into()),
                 chunk_type: uc_core::models::ChunkType::Conversation,
                 role: Some(uc_core::models::Role::User),
+                source_integration: Some("mcp".into()),
+                source_model: None,
             };
             let _ = self.engine.store(msg, store_params).await;
             let _ = self.engine.flush().await;

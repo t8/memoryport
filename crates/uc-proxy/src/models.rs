@@ -65,6 +65,20 @@ impl AnthropicSystem {
             }
         }
     }
+
+    pub fn append_text(&mut self, suffix: &str) {
+        match self {
+            AnthropicSystem::Text(ref mut s) => {
+                s.push_str("\n\n");
+                s.push_str(suffix);
+            }
+            AnthropicSystem::Blocks(ref mut blocks) => {
+                blocks.push(AnthropicContentBlock::Text {
+                    text: suffix.to_string(),
+                });
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

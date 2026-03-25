@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod analyzer;
 pub mod assembler;
 pub mod batcher;
@@ -261,7 +262,7 @@ impl Engine {
         self.batcher.set_user_id(&params.user_id).await;
 
         let timestamp = chrono::Utc::now().timestamp_millis();
-        let chunks = chunker::chunk_text(
+        let mut chunks = chunker::chunk_text(
             text,
             &params.session_id,
             params.chunk_type,
@@ -269,6 +270,12 @@ impl Engine {
             &self.chunker_config,
             timestamp,
         );
+
+        // Tag source integration + model on each chunk
+        for chunk in &mut chunks {
+            chunk.metadata.source_integration = params.source_integration.clone();
+            chunk.metadata.source_model = params.source_model.clone();
+        }
 
         let ids: Vec<Uuid> = chunks.iter().map(|c| c.id).collect();
 
@@ -351,6 +358,17 @@ impl Engine {
     ) -> Result<Vec<SearchResult>, EngineError> {
         let results = self.index.get_all_for_session(user_id, session_id).await?;
         Ok(results)
+    }
+
+    /// Compute analytics aggregates for a user.
+    pub async fn analytics(
+        &self,
+        user_id: &str,
+    ) -> Result<analytics::AnalyticsData, EngineError> {
+        let data = analytics::compute_analytics(&self.index, user_id)
+            .await
+            .map_err(|e| EngineError::Index(crate::index::IndexError::NoResults))?;
+        Ok(data)
     }
 
     /// List all sessions for a user.

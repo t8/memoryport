@@ -152,6 +152,8 @@ async fn main() -> anyhow::Result<()> {
                 session_id,
                 chunk_type,
                 role,
+                source_integration: Some("cli".into()),
+                source_model: None,
             };
             let ids = engine.store(&text, params).await?;
             engine.flush().await?;

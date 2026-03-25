@@ -1,8 +1,9 @@
 use crate::models::{AssembledContext, ChunkType, SearchResult};
 use chrono::{TimeZone, Utc};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 /// Assemble ranked search results into structured XML context for LLM injection.
+/// Deduplicates near-identical content before formatting.
 pub fn assemble_context(
     results: &[SearchResult],
     max_tokens: u32,
@@ -15,17 +16,34 @@ pub fn assemble_context(
         };
     }
 
+    // Deduplicate near-identical content (keeps first occurrence, which has higher score)
+    let mut seen_content: HashSet<String> = HashSet::new();
+    let deduped: Vec<&SearchResult> = results
+        .iter()
+        .filter(|r| {
+            // Normalize: lowercase, collapse whitespace, take first 100 chars as fingerprint
+            let fingerprint: String = r.content
+                .to_lowercase()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(100)
+                .collect();
+            seen_content.insert(fingerprint)
+        })
+        .collect();
+
     let mut budget = max_tokens;
     let mut included_results: Vec<&SearchResult> = Vec::new();
 
-    // Greedily fill from ranked results until budget exhausted
-    for result in results {
+    // Greedily fill from deduped results until budget exhausted
+    for result in &deduped {
         let chunk_tokens = estimate_tokens(&result.content);
         if chunk_tokens <= budget {
             included_results.push(result);
             budget -= chunk_tokens;
         } else if budget > 50 {
-            // Include truncated version if we have enough budget
             included_results.push(result);
             break;
         } else {

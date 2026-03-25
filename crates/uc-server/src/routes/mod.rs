@@ -1,5 +1,8 @@
 pub mod admin;
+pub mod analytics;
 pub mod health;
+pub mod integrations;
+pub mod settings;
 pub mod query;
 pub mod retrieve;
 pub mod sessions;

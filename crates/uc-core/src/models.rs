@@ -91,6 +91,12 @@ pub struct ChunkMetadata {
     pub token_count: u32,
     #[serde(default)]
     pub language: Option<String>,
+    /// Where this chunk was stored from: "mcp", "proxy", "cli", "api"
+    #[serde(default)]
+    pub source_integration: Option<String>,
+    /// Which LLM model was active: "claude-opus-4-20250514", "gpt-4o", etc.
+    #[serde(default)]
+    pub source_model: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -142,6 +148,8 @@ pub struct StoreParams {
     pub session_id: String,
     pub chunk_type: ChunkType,
     pub role: Option<Role>,
+    pub source_integration: Option<String>,
+    pub source_model: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -100,6 +100,87 @@ export async function retrieve(
   return httpPost("/v1/retrieve", { query, top_k: topK });
 }
 
+// ── Integrations ──
+
+export interface IntegrationsStatus {
+  mcp: { enabled: boolean; status: string };
+  proxy: { enabled: boolean; status: string };
+  arweave: { enabled: boolean; status: string };
+}
+
+export interface ToggleResponse {
+  success: boolean;
+  message: string;
+}
+
+export async function getIntegrations(): Promise<IntegrationsStatus> {
+  if (IS_TAURI) return tauriInvoke("get_integrations");
+  return httpGet("/v1/integrations");
+}
+
+export async function toggleIntegration(
+  integration: string,
+  enabled: boolean
+): Promise<ToggleResponse> {
+  if (IS_TAURI)
+    return tauriInvoke("toggle_integration", { integration, enabled });
+  return httpPost("/v1/integrations/toggle", { integration, enabled });
+}
+
+// ── Analytics ──
+
+export interface AnalyticsData {
+  activity: { date: string; count: number }[];
+  by_type: Record<string, number>;
+  by_source: Record<string, number>;
+  by_model: Record<string, number>;
+  sync_status: { synced: number; local: number };
+  total_chunks: number;
+  total_sessions: number;
+}
+
+export async function getAnalytics(): Promise<AnalyticsData> {
+  if (IS_TAURI) return tauriInvoke("get_analytics");
+  return httpGet("/v1/analytics");
+}
+
+// ── Settings ──
+
+export interface SettingsData {
+  embeddings: {
+    provider: string;
+    model: string;
+    dimensions: number;
+    api_key: string | null;
+    api_base: string | null;
+  };
+  retrieval: {
+    gating_enabled: boolean;
+    similarity_top_k: number;
+    recency_window: number;
+  };
+  arweave: {
+    gateway: string;
+    wallet_path: string | null;
+  };
+  encryption: {
+    enabled: boolean;
+  };
+}
+
+export async function getSettings(): Promise<SettingsData> {
+  if (IS_TAURI) return tauriInvoke("get_settings");
+  return httpGet("/v1/settings");
+}
+
+export async function updateSettings(settings: SettingsData): Promise<void> {
+  if (IS_TAURI) {
+    await tauriInvoke("update_settings", { settings });
+    return;
+  }
+  await httpPost("/v1/settings", settings);
+}
+
 export function isTauri(): boolean {
   return IS_TAURI;
 }

@@ -36,44 +36,46 @@ pub async fn proxy_completions(
 
     debug!(query = %last_user_msg, "extracting context for user message");
 
-    // 2. Run retrieval pipeline
-    let context = state
+    // 2. Search for relevant context (bypasses gating — proxy always searches)
+    let context = match state
         .engine
-        .query(
-            &last_user_msg,
-            &state.user_id,
-            Some(&state.session_id),
-            state.context_budget,
-        )
+        .search(&last_user_msg, &state.user_id, 20)
         .await
-        .map_err(|e| {
+    {
+        Ok(results) if !results.is_empty() => {
+            Some(uc_core::assembler::assemble_context(&results, state.context_budget))
+        }
+        Ok(_) => None,
+        Err(e) => {
             warn!(error = %e, "context retrieval failed, forwarding without context");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+            None
+        }
+    };
 
     // 3. Inject context as a system message at the beginning
-    if context.chunks_included > 0 {
-        info!(
-            chunks = context.chunks_included,
-            tokens = context.token_count,
-            "injecting context"
-        );
+    if let Some(ref ctx) = context {
+        if ctx.chunks_included > 0 {
+            info!(
+                chunks = ctx.chunks_included,
+                tokens = ctx.token_count,
+                "injecting context"
+            );
 
-        let context_msg = Message {
-            role: "system".into(),
-            content: format!(
-                "The following is relevant context from the user's stored memory:\n\n{}",
-                context.formatted
-            ),
-        };
+            let context_msg = Message {
+                role: "system".into(),
+                content: format!(
+                    "The following is relevant context from the user's stored memory:\n\n{}",
+                    ctx.formatted
+                ),
+            };
 
-        // Insert after any existing system messages
-        let insert_pos = request
-            .messages
-            .iter()
-            .position(|m| m.role != "system")
-            .unwrap_or(0);
-        request.messages.insert(insert_pos, context_msg);
+            let insert_pos = request
+                .messages
+                .iter()
+                .position(|m| m.role != "system")
+                .unwrap_or(0);
+            request.messages.insert(insert_pos, context_msg);
+        }
     }
 
     // 4. Forward to upstream
@@ -90,6 +92,8 @@ pub async fn proxy_completions(
             session_id,
             chunk_type: uc_core::models::ChunkType::Conversation,
             role: Some(uc_core::models::Role::User),
+            source_integration: Some("proxy".into()),
+            source_model: None,
         };
         if let Err(e) = engine.store(&user_msg, params).await {
             warn!(error = %e, "failed to store user message");

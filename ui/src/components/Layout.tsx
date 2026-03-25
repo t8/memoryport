@@ -1,8 +1,16 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { Database, Search, Settings, LayoutDashboard } from "lucide-react";
+import {
+  LayoutDashboard,
+  BarChart3,
+  Plug,
+  Settings,
+} from "lucide-react";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/analytics", icon: BarChart3, label: "Analytics" },
+  { to: "/integrations", icon: Plug, label: "Integrations" },
+  { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export default function Layout() {

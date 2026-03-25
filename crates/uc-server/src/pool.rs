@@ -26,6 +26,11 @@ impl EnginePool {
         }
     }
 
+    /// Get the base config (used for settings display).
+    pub fn base_config(&self) -> &Config {
+        &self.base_config
+    }
+
     /// Get or create an Engine for the given user.
     pub async fn get_or_create(&self, user_id: &str) -> Result<Arc<Engine>, EngineError> {
         // Fast path: read lock

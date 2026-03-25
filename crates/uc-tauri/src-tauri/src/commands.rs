@@ -155,6 +155,8 @@ pub async fn store_text(
             session_id: session_id.unwrap_or_else(|| "default".into()),
             chunk_type: uc_core::models::ChunkType::Conversation,
             role: Some(uc_core::models::Role::User),
+            source_integration: Some("desktop".into()),
+            source_model: None,
         };
         let ids = engine.store(&text, params).await.map_err(|e| e.to_string())?;
         let _ = engine.flush().await;

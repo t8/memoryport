@@ -25,6 +25,9 @@ uuid = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
 
+reqwest = { workspace = true }
+dirs = "6"
+
 axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }

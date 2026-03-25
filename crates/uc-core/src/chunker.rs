@@ -115,6 +115,8 @@ fn make_chunk(
         metadata: ChunkMetadata {
             token_count,
             language: None,
+            source_integration: None,
+            source_model: None,
             extra: Default::default(),
         },
     }

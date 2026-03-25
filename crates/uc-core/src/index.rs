@@ -58,6 +58,15 @@ pub struct Index {
 }
 
 impl Index {
+    /// Ensure we're reading the latest version of the table.
+    /// Required when another process (e.g., the proxy) writes to the same LanceDB.
+    async fn checkout_latest(&self) -> Result<(), IndexError> {
+        self.table.checkout_latest().await?;
+        Ok(())
+    }
+}
+
+impl Index {
     /// Open or create the LanceDB database and chunks table.
     pub async fn open(db_path: impl AsRef<Path>, dimensions: usize) -> Result<Self, IndexError> {
         let db_path_str = db_path.as_ref().to_string_lossy().to_string();
@@ -119,8 +128,8 @@ impl Index {
             filter.push_str(&format!(" AND timestamp >= {start} AND timestamp <= {end}"));
         }
 
-        let results: Vec<RecordBatch> = self
-            .table
+        self.checkout_latest().await?;
+        let results: Vec<RecordBatch> = self.table
             .query()
             .nearest_to(query_vector)?
             .only_if(filter)
@@ -152,8 +161,8 @@ impl Index {
             sanitize_sql(session_id)
         );
 
-        let results: Vec<RecordBatch> = self
-            .table
+        self.checkout_latest().await?;
+        let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)
             .limit(limit)
@@ -186,8 +195,8 @@ impl Index {
             sanitize_sql(session_id)
         );
 
-        let results: Vec<RecordBatch> = self
-            .table
+        self.checkout_latest().await?;
+        let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)
             .execute()
@@ -205,12 +214,32 @@ impl Index {
         Ok(search_results)
     }
 
+    /// Get all chunks for a user (for analytics aggregation).
+    pub async fn get_all_chunks(&self, user_id: &str) -> Result<Vec<SearchResult>, IndexError> {
+        let filter = format!("user_id = '{}'", sanitize_sql(user_id));
+        self.checkout_latest().await?;
+        let results: Vec<RecordBatch> = self.table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut all = Vec::new();
+        for batch in &results {
+            let parsed = parse_search_results(batch)?;
+            all.extend(parsed);
+        }
+        Ok(all)
+    }
+
     /// List all distinct sessions for a user with summary info.
     pub async fn list_sessions(&self, user_id: &str) -> Result<Vec<SessionSummary>, IndexError> {
         let filter = format!("user_id = '{}'", sanitize_sql(user_id));
 
-        let results: Vec<RecordBatch> = self
-            .table
+        self.checkout_latest().await?;
+        let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)
             .execute()
@@ -253,24 +282,10 @@ impl Index {
 
     /// Count total rows, optionally filtered by user_id.
     pub async fn count(&self, user_id: Option<&str>) -> Result<usize, IndexError> {
-        let results: Vec<RecordBatch> = if let Some(uid) = user_id {
-            self.table
-                .query()
-                .only_if(format!("user_id = '{}'", sanitize_sql(uid)))
-                .execute()
-                .await?
-                .try_collect()
-                .await?
-        } else {
-            self.table
-                .query()
-                .execute()
-                .await?
-                .try_collect()
-                .await?
-        };
-
-        Ok(results.iter().map(|b| b.num_rows()).sum())
+        self.checkout_latest().await?;
+        let filter = user_id.map(|uid| format!("user_id = '{}'", sanitize_sql(uid)));
+        let count = self.table.count_rows(filter).await?;
+        Ok(count)
     }
 }
 
