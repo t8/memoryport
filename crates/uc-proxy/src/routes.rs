@@ -9,7 +9,6 @@ use crate::models::{ChatCompletionsRequest, Message};
 
 pub struct ProxyState {
     pub engine: Arc<uc_core::Engine>,
-    pub upstream: String,
     pub http: reqwest::Client,
     pub user_id: String,
     pub session_id: String,
@@ -100,11 +99,13 @@ pub async fn proxy_completions(
     Ok(response)
 }
 
+const OPENAI_UPSTREAM: &str = "https://api.openai.com";
+
 async fn forward_request(
     state: &ProxyState,
     request: &ChatCompletionsRequest,
 ) -> Result<Response, StatusCode> {
-    let url = format!("{}/v1/chat/completions", state.upstream);
+    let url = format!("{}/v1/chat/completions", OPENAI_UPSTREAM);
 
     let upstream_resp = state
         .http

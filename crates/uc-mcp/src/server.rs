@@ -270,7 +270,7 @@ impl ServerHandler for UcMcpServer {
                 .build(),
         );
         info.instructions = Some(
-            "Memoryport — persistent LLM memory on Arweave. \
+            "Memoryport — persistent memory for LLMs on Arweave. \
              IMPORTANT: Call uc_auto_store with every user message and your assistant response \
              to build persistent memory across sessions. Use uc_query to retrieve relevant \
              context when answering questions that might benefit from prior conversations."

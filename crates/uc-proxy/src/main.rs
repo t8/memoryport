@@ -1,3 +1,4 @@
+mod anthropic;
 mod models;
 mod routes;
 
@@ -13,7 +14,7 @@ use crate::routes::ProxyState;
 #[derive(Parser)]
 #[command(
     name = "uc-proxy",
-    about = "Unlimited Context — OpenAI-compatible API proxy with automatic context injection"
+    about = "Memoryport — LLM API proxy with automatic context injection and memory capture"
 )]
 struct Cli {
     /// Path to the configuration file.
@@ -23,10 +24,6 @@ struct Cli {
     /// Listen address.
     #[arg(short, long)]
     listen: Option<String>,
-
-    /// Upstream LLM API URL.
-    #[arg(short, long)]
-    upstream: Option<String>,
 
     /// Default user ID.
     #[arg(long, default_value = "default")]
@@ -53,16 +50,11 @@ async fn main() -> anyhow::Result<()> {
     let listen = cli
         .listen
         .unwrap_or_else(|| config.proxy.listen.clone());
-    let upstream = cli
-        .upstream
-        .or_else(|| config.proxy.upstream.clone())
-        .unwrap_or_else(|| "https://api.openai.com".into());
 
     let engine = Arc::new(Engine::new(config).await?);
 
     let state = Arc::new(ProxyState {
         engine,
-        upstream: upstream.clone(),
         http: reqwest::Client::new(),
         user_id: cli.user_id,
         session_id: cli.session_id,
@@ -70,11 +62,18 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let app = Router::new()
+        // Anthropic Messages API
+        .route("/v1/messages", post(anthropic::proxy_messages))
+        // OpenAI Chat Completions API
         .route("/v1/chat/completions", post(routes::proxy_completions))
+        // Health
         .route("/health", get(routes::health))
         .with_state(state);
 
-    tracing::info!(listen = %listen, upstream = %upstream, "starting Unlimited Context proxy");
+    tracing::info!(
+        listen = %listen,
+        "starting Memoryport proxy (Anthropic + OpenAI)"
+    );
 
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     axum::serve(listener, app).await?;

@@ -93,6 +93,9 @@ enum Commands {
         tx_id: String,
     },
 
+    /// Start the auto-capture proxy (Anthropic + OpenAI).
+    Proxy,
+
     /// Show engine status.
     Status,
 
@@ -108,9 +111,12 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    // Init doesn't need an engine — handle it early
+    // Init and Proxy don't need an engine — handle early
     if matches!(cli.command, Commands::Init) {
         return init::run_init();
+    }
+    if matches!(cli.command, Commands::Proxy) {
+        return run_proxy(&cli.config);
     }
 
     let config = Config::from_file(&cli.config).unwrap_or_else(|_| {
@@ -124,7 +130,8 @@ async fn main() -> anyhow::Result<()> {
     let engine = Engine::new(config).await?;
 
     match cli.command {
-        Commands::Init => unreachable!(), // handled above
+        Commands::Init => unreachable!(),
+        Commands::Proxy => unreachable!(),
         Commands::Store {
             text,
             user_id,
@@ -238,6 +245,35 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn run_proxy(config_path: &str) -> anyhow::Result<()> {
+    // Find the uc-proxy binary next to this binary
+    let proxy_bin = if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sibling = dir.join("uc-proxy");
+            if sibling.exists() {
+                sibling.to_string_lossy().to_string()
+            } else {
+                "uc-proxy".into()
+            }
+        } else {
+            "uc-proxy".into()
+        }
+    } else {
+        "uc-proxy".into()
+    };
+
+    println!("Starting Memoryport proxy...");
+    let status = std::process::Command::new(&proxy_bin)
+        .arg("--config")
+        .arg(config_path)
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("proxy exited with status {}", status);
+    }
     Ok(())
 }
 

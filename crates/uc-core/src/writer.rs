@@ -82,29 +82,42 @@ impl Writer {
             json_bytes
         };
 
-        // 4. Upload to Arweave
-        let response = self.arweave.upload(&upload_bytes, &tags).await?;
-
-        info!(
-            batch_id = %batch.id,
-            tx_id = %response.id,
-            encrypted = self.master_key.is_some(),
-            "batch uploaded to Arweave"
-        );
+        // 4. Upload to Arweave (skip if no wallet — local-only mode)
+        let tx_id = match self.arweave.upload(&upload_bytes, &tags).await {
+            Ok(response) => {
+                info!(
+                    batch_id = %batch.id,
+                    tx_id = %response.id,
+                    encrypted = self.master_key.is_some(),
+                    "batch uploaded to Arweave"
+                );
+                response.id
+            }
+            Err(uc_arweave::ArweaveError::NoWallet) => {
+                // Local-only mode: generate a synthetic tx_id
+                let local_id = format!("local_{}", batch.id);
+                debug!(
+                    batch_id = %batch.id,
+                    tx_id = %local_id,
+                    "no wallet configured, storing locally only"
+                );
+                local_id
+            }
+            Err(e) => return Err(WriterError::Upload(e)),
+        };
 
         // 5. Store encrypted batch key in keystore (if encrypted)
         if self.master_key.is_some() {
             if let Some(ref keystore) = self.keystore {
-                // Find the encrypted key from tags
                 if let Some(key_tag) = tags.iter().find(|t| t.name == "UC-Batch-Key") {
                     let ebk = EncryptedBatchKey::from_base64(&key_tag.value)?;
-                    keystore.store(&response.id, &ebk, &batch.user_id).await?;
+                    keystore.store(&tx_id, &ebk, &batch.user_id).await?;
                 }
             }
         }
 
         Ok(UploadReceipt {
-            tx_id: response.id,
+            tx_id,
             timestamp: Utc::now(),
         })
     }

@@ -2,56 +2,162 @@ use dialoguer::{Confirm, Input, Select};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const LOGO: &str = "
+\x1b[36m ███╗   ███╗███████╗███╗   ███╗ ██████╗ ██████╗ ██╗   ██╗
+ ████╗ ████║██╔════╝████╗ ████║██╔═══██╗██╔══██╗╚██╗ ██╔╝
+ ██╔████╔██║█████╗  ██╔████╔██║██║   ██║██████╔╝ ╚████╔╝
+ ██║╚██╔╝██║██╔══╝  ██║╚██╔╝██║██║   ██║██╔══██╗  ╚██╔╝
+ ██║ ╚═╝ ██║███████╗██║ ╚═╝ ██║╚██████╔╝██║  ██║   ██║
+ ╚═╝     ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝
+ ██████╗  ██████╗ ██████╗ ████████╗
+ ██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝
+ ██████╔╝██║   ██║██████╔╝   ██║
+ ██╔═══╝ ██║   ██║██╔══██╗   ██║
+ ██║     ╚██████╔╝██║  ██║   ██║
+ ╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝\x1b[0m
+
+ \x1b[2mDestroyer of the context window\x1b[0m
+";
+
+fn dim(s: &str) -> String {
+    format!("\x1b[2m{}\x1b[0m", s)
+}
+
+fn bold(s: &str) -> String {
+    format!("\x1b[1m{}\x1b[0m", s)
+}
+
+fn green(s: &str) -> String {
+    format!("\x1b[32m{}\x1b[0m", s)
+}
+
+fn cyan(s: &str) -> String {
+    format!("\x1b[36m{}\x1b[0m", s)
+}
+
+fn yellow(s: &str) -> String {
+    format!("\x1b[33m{}\x1b[0m", s)
+}
+
+fn step(n: u8, msg: &str) {
+    println!("  {} {}", cyan(&format!("[{n}/4]")), bold(msg));
+}
+
+fn success(msg: &str) {
+    println!("     {} {}", green("✓"), msg);
+}
+
+fn info(msg: &str) {
+    println!("     {} {}", dim("·"), msg);
+}
+
 /// Run the interactive setup wizard.
 pub fn run_init() -> anyhow::Result<()> {
-    println!("\n  Memoryport — Setup Wizard\n");
+    println!("{}", LOGO);
 
     let uc_dir = get_uc_dir();
     let config_path = uc_dir.join("uc.toml");
 
     // Check existing config
     if config_path.exists() {
+        println!("  {} Existing configuration found at {}", yellow("!"), config_path.display());
+        println!();
         let reconfigure = Confirm::new()
-            .with_prompt("Existing configuration found. Reconfigure?")
+            .with_prompt("  Reconfigure?")
             .default(false)
             .interact()?;
         if !reconfigure {
-            println!("Keeping existing configuration.");
+            println!("\n  {}", dim("Keeping existing configuration. Done."));
             return Ok(());
         }
+        println!();
     }
 
-    // Choose embedding provider
-    let provider_options = &["OpenAI (requires API key)", "Ollama (local, free)"];
+    // ── Step 1: Choose embedding provider ──
+    step(1, "Choose your embedding provider (1/5)");
+    println!();
+    println!("     Memoryport needs an embedding model to understand your text.");
+    println!("     Embeddings convert words into numbers so we can find");
+    println!("     semantically similar content — this is how your AI recalls");
+    println!("     relevant context from past conversations.");
+    println!();
+    let provider_options = &[
+        "OpenAI  — cloud embeddings, requires API key",
+        "Ollama  — local embeddings, free, private",
+    ];
     let provider_idx = Select::new()
-        .with_prompt("Choose embedding provider")
+        .with_prompt("  Provider")
         .items(provider_options)
         .default(0)
         .interact()?;
 
+    println!();
     let (provider, model, dimensions, api_key) = match provider_idx {
         0 => setup_openai()?,
         1 => setup_ollama()?,
         _ => unreachable!(),
     };
 
-    // Create directories
+    // ── Step 2: Create directories + config ──
+    println!();
+    step(2, "Writing configuration (2/5)");
     std::fs::create_dir_all(uc_dir.join("index"))?;
-    println!("  Created {}", uc_dir.display());
-
-    // Write config
     let config_content = generate_config(&provider, &model, dimensions, api_key.as_deref(), &uc_dir);
     std::fs::write(&config_path, &config_content)?;
-    println!("  Wrote {}", config_path.display());
+    success(&format!("Config written to {}", config_path.display()));
+    success(&format!("Index directory at {}/index", uc_dir.display()));
 
-    // Auto-register MCP server
+    // ── Step 3: Register MCP servers ──
+    println!();
+    step(3, "Registering MCP server in editors (3/5)");
     register_mcp_servers(&uc_dir)?;
 
-    println!("\n  Setup complete! Memoryport is ready.\n");
-    println!("  Config:  {}", config_path.display());
-    println!("  Index:   {}", uc_dir.join("index").display());
-    println!("\n  To use with Claude Code, restart your editor.");
-    println!("  To test: uc --config {} status\n", config_path.display());
+    // ── Step 4: Auto-capture proxy ──
+    println!();
+    step(4, "Auto-capture proxy (4/5)");
+    println!();
+    println!("     The proxy captures every conversation automatically —");
+    println!("     both your messages and the AI's responses. It sits");
+    println!("     between your editor and the AI provider, transparent");
+    println!("     and invisible.");
+    println!();
+    let enable_proxy = Confirm::new()
+        .with_prompt("  Enable auto-capture proxy?")
+        .default(true)
+        .interact()?;
+
+    if enable_proxy {
+        setup_proxy(&config_path, &uc_dir)?;
+    } else {
+        info("Proxy not enabled. You can enable it later by re-running uc init.");
+    }
+
+    // ── Step 5: Summary ──
+    println!();
+    step(5, "Done! (5/5)");
+    println!();
+    println!();
+    println!("  {} Memoryport is ready.", green("✓"));
+    println!();
+    success(&format!("Config:   {}", config_path.display()));
+    success(&format!("Provider: {provider} / {model}"));
+    if enable_proxy {
+        success("Proxy:    auto-capture enabled");
+    }
+    println!();
+    println!("  Next steps:");
+    if enable_proxy {
+        println!("    1. Start the proxy:");
+        println!("       {}", bold(&format!("uc-proxy --config {}", config_path.display())));
+        println!("    2. Restart your editor (Claude Code / Cursor)");
+        println!("    3. Start chatting — memory is automatic");
+    } else {
+        println!("    1. Restart your editor (Claude Code / Cursor)");
+        println!("    2. Start chatting — memory is automatic");
+    }
+    println!();
+    println!("  Test: {}", dim(&format!("uc --config {} status", config_path.display())));
+    println!();
 
     Ok(())
 }
@@ -68,86 +174,81 @@ fn setup_openai() -> anyhow::Result<(String, String, usize, Option<String>)> {
     let existing_key = std::env::var("OPENAI_API_KEY").ok();
 
     let api_key = if existing_key.is_some() {
-        println!("  Found OPENAI_API_KEY in environment.");
+        success("Found OPENAI_API_KEY in environment");
         let use_existing = Confirm::new()
-            .with_prompt("Use existing OPENAI_API_KEY?")
+            .with_prompt("  Use existing key?")
             .default(true)
             .interact()?;
         if use_existing {
-            None // will use env var at runtime
+            None
         } else {
             let key: String = Input::new()
-                .with_prompt("Enter OpenAI API key")
+                .with_prompt("  OpenAI API key")
                 .interact_text()?;
             Some(key)
         }
     } else {
+        info("No OPENAI_API_KEY found in environment");
         let key: String = Input::new()
-            .with_prompt("Enter OpenAI API key (or set OPENAI_API_KEY env var)")
+            .with_prompt("  Enter OpenAI API key (or leave empty to set OPENAI_API_KEY later)")
             .allow_empty(true)
             .interact_text()?;
         if key.is_empty() {
-            println!("  No API key provided. Set OPENAI_API_KEY before using.");
+            println!("     {} Set OPENAI_API_KEY before using Memoryport", yellow("!"));
             None
         } else {
+            success("API key saved to config");
             Some(key)
         }
     };
+
+    success(&format!("Using {} with {}", bold("OpenAI"), bold("text-embedding-3-small")));
 
     Ok(("openai".into(), "text-embedding-3-small".into(), 1536, api_key))
 }
 
 fn setup_ollama() -> anyhow::Result<(String, String, usize, Option<String>)> {
-    // Check if ollama is installed
     let ollama_installed = Command::new("ollama").arg("--version").output().is_ok();
 
     if !ollama_installed {
-        println!("  Ollama is not installed.");
+        println!("     {} Ollama is not installed", yellow("!"));
         let install = Confirm::new()
-            .with_prompt("Install Ollama now?")
+            .with_prompt("  Install Ollama now?")
             .default(true)
             .interact()?;
 
         if install {
-            println!("  Installing Ollama...");
-            let status = if cfg!(target_os = "macos") {
-                // On macOS, use the official installer
-                Command::new("sh")
-                    .arg("-c")
-                    .arg("curl -fsSL https://ollama.com/install.sh | sh")
-                    .status()
-            } else {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg("curl -fsSL https://ollama.com/install.sh | sh")
-                    .status()
-            };
+            info("Installing Ollama...");
+            let status = Command::new("sh")
+                .arg("-c")
+                .arg("curl -fsSL https://ollama.com/install.sh | sh")
+                .status();
 
             match status {
-                Ok(s) if s.success() => println!("  Ollama installed successfully."),
+                Ok(s) if s.success() => success("Ollama installed"),
                 _ => {
-                    println!("  Failed to install Ollama. Please install manually: https://ollama.com");
-                    println!("  Continuing with Ollama configuration anyway...");
+                    println!("     {} Install failed. Visit https://ollama.com", yellow("!"));
+                    info("Continuing with Ollama configuration...");
                 }
             }
         } else {
-            println!("  Please install Ollama manually: https://ollama.com");
-            println!("  Continuing with Ollama configuration...");
+            info("Install Ollama later: https://ollama.com");
         }
     } else {
-        println!("  Ollama detected.");
+        success("Ollama detected");
     }
 
-    // Pull the embedding model
-    println!("  Pulling nomic-embed-text model...");
+    info("Pulling nomic-embed-text model...");
     let pull_result = Command::new("ollama")
         .args(["pull", "nomic-embed-text"])
         .status();
 
     match pull_result {
-        Ok(s) if s.success() => println!("  Model ready."),
-        _ => println!("  Could not pull model now. Run `ollama pull nomic-embed-text` later."),
+        Ok(s) if s.success() => success("Model nomic-embed-text ready"),
+        _ => println!("     {} Run `ollama pull nomic-embed-text` later", yellow("!")),
     }
+
+    success(&format!("Using {} with {}", bold("Ollama"), bold("nomic-embed-text")));
 
     Ok(("ollama".into(), "nomic-embed-text".into(), 768, None))
 }
@@ -192,35 +293,92 @@ similarity_top_k = 50
     config
 }
 
-fn register_mcp_servers(uc_dir: &Path) -> anyhow::Result<()> {
-    let uc_mcp_path = find_uc_mcp_binary();
+fn setup_proxy(config_path: &Path, _uc_dir: &Path) -> anyhow::Result<()> {
+    let proxy_listen = "127.0.0.1:9191";
 
-    // Claude Code settings
-    let claude_paths = [
-        dirs_home().join(".claude").join("settings.json"),
-    ];
+    // Append proxy config to uc.toml
+    let mut config = std::fs::read_to_string(config_path)?;
+    if !config.contains("[proxy]") {
+        config.push_str(&format!(
+            r#"
+[proxy]
+listen = "{proxy_listen}"
+"#
+        ));
+        std::fs::write(config_path, &config)?;
+    }
+    success(&format!("Proxy configured on {proxy_listen}"));
 
-    for settings_path in &claude_paths {
-        if let Some(parent) = settings_path.parent() {
-            if parent.exists() {
-                register_claude_code(settings_path, &uc_mcp_path, uc_dir)?;
+    // Set ANTHROPIC_BASE_URL in ~/.claude.json
+    let claude_json = dirs_home().join(".claude.json");
+    if claude_json.exists() {
+        if let Ok(content) = std::fs::read_to_string(&claude_json) {
+            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                let env = data
+                    .as_object_mut()
+                    .unwrap()
+                    .entry("env")
+                    .or_insert(serde_json::json!({}));
+                env.as_object_mut()
+                    .unwrap()
+                    .insert(
+                        "ANTHROPIC_BASE_URL".into(),
+                        serde_json::json!(format!("http://{proxy_listen}")),
+                    );
+                let updated = serde_json::to_string_pretty(&data)?;
+                std::fs::write(&claude_json, updated)?;
+                success("Set ANTHROPIC_BASE_URL in Claude Code config");
+            }
+        }
+    } else {
+        info(&format!(
+            "Set this env var for Claude Code: ANTHROPIC_BASE_URL=http://{proxy_listen}"
+        ));
+    }
+
+    let proxy_bin = find_proxy_binary();
+    info(&format!("Proxy binary: {proxy_bin}"));
+
+    Ok(())
+}
+
+fn find_proxy_binary() -> String {
+    let in_path = which("uc-proxy");
+    if !in_path.is_empty() && Path::new(&in_path).exists() {
+        return in_path;
+    }
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(dir) = current_exe.parent() {
+            let sibling = dir.join("uc-proxy");
+            if sibling.exists() {
+                return sibling.to_string_lossy().to_string();
             }
         }
     }
+    "uc-proxy".into()
+}
+
+fn register_mcp_servers(uc_dir: &Path) -> anyhow::Result<()> {
+    let uc_mcp_path = find_uc_mcp_binary();
+
+    // Claude Code: MCP servers go in ~/.claude.json (not settings.json)
+    let claude_json = dirs_home().join(".claude.json");
+    register_editor_mcp(&claude_json, &uc_mcp_path, uc_dir, "Claude Code")?;
 
     // Cursor MCP config
     let cursor_path = dirs_home().join(".cursor").join("mcp.json");
     if cursor_path.parent().map_or(false, |p| p.exists()) {
-        register_cursor(&cursor_path, &uc_mcp_path, uc_dir)?;
+        register_editor_mcp(&cursor_path, &uc_mcp_path, uc_dir, "Cursor")?;
     }
 
     Ok(())
 }
 
-fn register_claude_code(
+fn register_editor_mcp(
     settings_path: &Path,
     uc_mcp_path: &str,
     uc_dir: &Path,
+    editor_name: &str,
 ) -> anyhow::Result<()> {
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = std::fs::read_to_string(settings_path)?;
@@ -250,60 +408,35 @@ fn register_claude_code(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(settings_path, content)?;
-    println!("  Registered MCP server in {}", settings_path.display());
-
-    Ok(())
-}
-
-fn register_cursor(
-    mcp_path: &Path,
-    uc_mcp_path: &str,
-    uc_dir: &Path,
-) -> anyhow::Result<()> {
-    let mut config: serde_json::Value = if mcp_path.exists() {
-        let content = std::fs::read_to_string(mcp_path)?;
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    let config_path = uc_dir.join("uc.toml").to_string_lossy().to_string();
-
-    let mcp_entry = serde_json::json!({
-        "command": uc_mcp_path,
-        "args": ["--config", config_path]
-    });
-
-    config
-        .as_object_mut()
-        .unwrap()
-        .entry("mcpServers")
-        .or_insert(serde_json::json!({}))
-        .as_object_mut()
-        .unwrap()
-        .insert("memoryport".into(), mcp_entry);
-
-    let content = serde_json::to_string_pretty(&config)?;
-    std::fs::write(mcp_path, content)?;
-    println!("  Registered MCP server in {}", mcp_path.display());
+    success(&format!("Registered in {} ({})", editor_name, settings_path.display()));
 
     Ok(())
 }
 
 fn find_uc_mcp_binary() -> String {
-    // Check common locations
-    let candidates = [
-        which("uc-mcp"),
-        get_uc_dir().join("bin").join("uc-mcp").to_string_lossy().to_string(),
-    ];
+    // Check if uc-mcp is in PATH (returns absolute path)
+    let in_path = which("uc-mcp");
+    if !in_path.is_empty() && Path::new(&in_path).exists() {
+        return in_path;
+    }
 
-    for candidate in &candidates {
-        if !candidate.is_empty() && Path::new(candidate).exists() {
-            return candidate.clone();
+    // Check alongside the current binary
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(dir) = current_exe.parent() {
+            let sibling = dir.join("uc-mcp");
+            if sibling.exists() {
+                return sibling.to_string_lossy().to_string();
+            }
         }
     }
 
-    // Fallback: assume it's in PATH
+    // Check in the memoryport bin dir
+    let mp_bin = get_uc_dir().join("bin").join("uc-mcp");
+    if mp_bin.exists() {
+        return mp_bin.to_string_lossy().to_string();
+    }
+
+    // Fallback
     "uc-mcp".into()
 }
 
