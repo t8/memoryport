@@ -64,9 +64,15 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         // Anthropic Messages API
         .route("/v1/messages", post(anthropic::proxy_messages))
-        // OpenAI Chat Completions API
+        // OpenAI Chat Completions API (also used by Ollama)
         .route("/v1/chat/completions", post(routes::proxy_completions))
-        // Health
+        // Ollama native API — forward directly to real Ollama
+        .route("/api/generate", post(routes::forward_ollama_native))
+        .route("/api/chat", post(routes::forward_ollama_native))
+        .route("/api/embed", post(routes::forward_ollama_native))
+        .route("/api/tags", get(routes::forward_ollama_native_get))
+        // Health (respond to both our format and Ollama's root check)
+        .route("/", get(routes::ollama_root))
         .route("/health", get(routes::health))
         .with_state(state);
 

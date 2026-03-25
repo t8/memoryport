@@ -257,7 +257,7 @@ async fn toggle_ollama(enabled: bool) -> Result<ToggleResponse, ApiError> {
         .join("ollama-intercept.active");
 
     if enabled {
-        // Step 1: Check if Ollama is running on default port
+        // Step 1: Check if Ollama is running
         let ollama_running = reqwest::Client::new()
             .get(format!("http://127.0.0.1:{OLLAMA_DEFAULT_PORT}"))
             .timeout(std::time::Duration::from_secs(2))
@@ -272,40 +272,58 @@ async fn toggle_ollama(enabled: bool) -> Result<ToggleResponse, ApiError> {
             });
         }
 
-        // Step 2: Stop Ollama, restart it on the moved port
-        // On macOS, Ollama runs as a background app. We set OLLAMA_HOST env for it.
-        // The standard approach: stop ollama, set env, restart.
+        // Step 2: Stop Ollama completely (including macOS app auto-restart)
         #[cfg(target_os = "macos")]
         {
-            // Stop Ollama
-            let _ = std::process::Command::new("pkill").arg("-f").arg("ollama").status();
+            // Quit the Ollama.app gracefully first (prevents launchd respawn)
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg("tell application \"Ollama\" to quit")
+                .status();
             std::thread::sleep(std::time::Duration::from_secs(2));
-
-            // Restart Ollama on the moved port
+            // Also kill any remaining ollama serve processes
+            let _ = std::process::Command::new("pkill").arg("-9").arg("-f").arg("ollama serve").status();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            // Kill anything still on 11434
             let _ = std::process::Command::new("sh")
                 .arg("-c")
-                .arg(format!(
-                    "OLLAMA_HOST=127.0.0.1:{OLLAMA_MOVED_PORT} nohup ollama serve > /dev/null 2>&1 &"
-                ))
+                .arg("lsof -ti:11434 | xargs kill -9 2>/dev/null")
                 .status();
-            std::thread::sleep(std::time::Duration::from_secs(3));
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = std::process::Command::new("pkill").arg("-f").arg("ollama").status();
+            let _ = std::process::Command::new("pkill").arg("-9").arg("-f").arg("ollama").status();
             std::thread::sleep(std::time::Duration::from_secs(2));
-
-            let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!(
-                    "OLLAMA_HOST=127.0.0.1:{OLLAMA_MOVED_PORT} nohup ollama serve > /dev/null 2>&1 &"
-                ))
-                .status();
-            std::thread::sleep(std::time::Duration::from_secs(3));
         }
 
-        // Step 3: Start the proxy on port 11434 (Ollama's default) forwarding to 11435
+        // Step 3: Start ollama serve on the moved port
+        let ollama_bin = find_ollama_binary();
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "OLLAMA_HOST=127.0.0.1:{OLLAMA_MOVED_PORT} nohup {ollama_bin} serve > /dev/null 2>&1 &"
+            ))
+            .status();
+        std::thread::sleep(std::time::Duration::from_secs(3));
+
+        // Verify Ollama is on the moved port
+        let moved_ok = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{OLLAMA_MOVED_PORT}"))
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+            .is_ok();
+
+        if !moved_ok {
+            return Ok(ToggleResponse {
+                success: false,
+                message: format!("Failed to restart Ollama on port {OLLAMA_MOVED_PORT}. Try again."),
+            });
+        }
+
+        // Step 4: Start the proxy on port 11434
         let proxy_bin = find_uc_proxy_binary();
         let config_path = dirs::home_dir()
             .unwrap_or_default()
@@ -330,29 +348,41 @@ async fn toggle_ollama(enabled: bool) -> Result<ToggleResponse, ApiError> {
         Ok(ToggleResponse {
             success: true,
             message: format!(
-                "Ollama moved to port {OLLAMA_MOVED_PORT}. Memoryport proxy now intercepts on port {OLLAMA_DEFAULT_PORT}. All Ollama clients work automatically."
+                "Ollama moved to port {OLLAMA_MOVED_PORT}. Memoryport proxy intercepts on port {OLLAMA_DEFAULT_PORT}. All Ollama clients work automatically. Note: the Ollama menu bar app will reappear when you toggle this off."
             ),
         })
     } else {
         // Step 1: Kill the proxy on 11434
-        #[cfg(unix)]
-        {
-            // Find and kill the proxy listening on 11434
-            let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg("lsof -ti:11434 | xargs kill 2>/dev/null")
-                .status();
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-
-        // Step 2: Stop Ollama on moved port, restart on default
-        let _ = std::process::Command::new("pkill").arg("-f").arg("ollama").status();
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
         let _ = std::process::Command::new("sh")
             .arg("-c")
-            .arg("nohup ollama serve > /dev/null 2>&1 &")
+            .arg("lsof -ti:11434 | xargs kill -9 2>/dev/null")
             .status();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Step 2: Kill ollama on moved port
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("lsof -ti:{OLLAMA_MOVED_PORT} | xargs kill -9 2>/dev/null"))
+            .status();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Step 3: Restart Ollama normally
+        #[cfg(target_os = "macos")]
+        {
+            // Reopen Ollama.app (launches with default port)
+            let _ = std::process::Command::new("open")
+                .arg("-a")
+                .arg("Ollama")
+                .status();
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("nohup ollama serve > /dev/null 2>&1 &")
+                .status();
+        }
 
         // Remove marker
         let _ = std::fs::remove_file(&marker);
@@ -392,6 +422,15 @@ fn check_proxy_configured() -> bool {
         }
     }
     false
+}
+
+fn find_ollama_binary() -> String {
+    for path in &["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"] {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+    which_binary("ollama")
 }
 
 fn find_uc_mcp_binary() -> String {

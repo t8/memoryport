@@ -250,3 +250,85 @@ async fn forward_openai_raw(
 pub async fn health() -> &'static str {
     "ok"
 }
+
+/// Respond to Ollama's root check (GET /) so clients think we're Ollama.
+pub async fn ollama_root() -> &'static str {
+    "Ollama is running"
+}
+
+/// Get the port where real Ollama is running.
+fn get_ollama_port() -> &'static str {
+    // Check marker file on every call (cheap file existence check)
+    let marker = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".memoryport")
+        .join("ollama-intercept.active");
+    if marker.exists() { "11435" } else { "11434" }
+}
+
+/// Forward Ollama native API requests (POST /api/*) directly to real Ollama.
+/// These are non-OpenAI format requests — just passthrough with no modification.
+pub async fn forward_ollama_native(
+    State(state): State<Arc<ProxyState>>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+    body: axum::body::Bytes,
+) -> Result<Response, StatusCode> {
+    let ollama_port = get_ollama_port();
+    let upstream = format!("http://127.0.0.1:{}{}", ollama_port, uri.path());
+    eprintln!("[memoryport-proxy] forwarding POST {} -> {}", uri.path(), upstream);
+
+    let resp = state
+        .http
+        .post(&upstream)
+        .header("content-type", "application/json")
+        .body(body.to_vec())
+        .send()
+        .await
+        .map_err(|e| {
+            warn!(error = %e, "failed to forward to Ollama");
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    let status = StatusCode::from_u16(resp.status().as_u16())
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let resp_headers = resp.headers().clone();
+    let body_bytes = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    let mut response = (status, body_bytes).into_response();
+    if let Some(ct) = resp_headers.get("content-type") {
+        response.headers_mut().insert("content-type", ct.clone());
+    }
+    Ok(response)
+}
+
+/// Forward Ollama native GET requests (/api/tags etc.)
+pub async fn forward_ollama_native_get(
+    State(state): State<Arc<ProxyState>>,
+    uri: axum::http::Uri,
+) -> Result<Response, StatusCode> {
+    let ollama_port = get_ollama_port();
+    let upstream = format!("http://127.0.0.1:{}{}", ollama_port, uri.path());
+    eprintln!("[memoryport-proxy] forwarding GET {} -> {}", uri.path(), upstream);
+
+    let resp = state
+        .http
+        .get(&upstream)
+        .send()
+        .await
+        .map_err(|e| {
+            warn!(error = %e, "failed to forward to Ollama");
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    let status = StatusCode::from_u16(resp.status().as_u16())
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let resp_headers = resp.headers().clone();
+    let body_bytes = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    let mut response = (status, body_bytes).into_response();
+    if let Some(ct) = resp_headers.get("content-type") {
+        response.headers_mut().insert("content-type", ct.clone());
+    }
+    Ok(response)
+}
