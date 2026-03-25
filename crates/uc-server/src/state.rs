@@ -47,7 +47,7 @@ impl Default for ServerConfig {
 }
 
 fn default_listen() -> String { "0.0.0.0:8080".into() }
-fn default_data_dir() -> String { "~/.uc-server".into() }
+fn default_data_dir() -> String { "~/.memoryport-server".into() }
 fn default_max_engines() -> usize { 100 }
 fn default_request_body_limit() -> usize { 10 * 1024 * 1024 } // 10MB
 fn default_request_timeout_secs() -> u64 { 30 }

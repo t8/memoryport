@@ -1,3 +1,5 @@
+mod init;
+
 use clap::{Parser, Subcommand};
 use uc_core::config::Config;
 use uc_core::models::*;
@@ -16,6 +18,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Interactive setup wizard — configure provider, register MCP, done.
+    Init,
+
     /// Store text content in Unlimited Context.
     Store {
         /// The text to store.
@@ -103,6 +108,11 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
+    // Init doesn't need an engine — handle it early
+    if matches!(cli.command, Commands::Init) {
+        return init::run_init();
+    }
+
     let config = Config::from_file(&cli.config).unwrap_or_else(|_| {
         tracing::debug!(
             path = %cli.config,
@@ -114,6 +124,7 @@ async fn main() -> anyhow::Result<()> {
     let engine = Engine::new(config).await?;
 
     match cli.command {
+        Commands::Init => unreachable!(), // handled above
         Commands::Store {
             text,
             user_id,

@@ -51,6 +51,8 @@ pub struct QueryParams {
     pub session_id: Option<String>,
     /// Maximum tokens for assembled context.
     pub max_tokens: Option<u32>,
+    /// Optional: the current user message to auto-store before querying.
+    pub current_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -79,10 +81,44 @@ pub struct ListSessionsParams {
     pub user_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AutoStoreParams {
+    /// The conversation message content.
+    pub content: String,
+    /// Role of the message author: "user" or "assistant".
+    pub role: String,
+    /// Session identifier for this conversation.
+    pub session_id: Option<String>,
+}
+
 // -- Tool implementations --
 
 #[tool_router(router = tool_router)]
 impl UcMcpServer {
+    #[tool(description = "Automatically store a conversation turn. Call this with every user and assistant message to build persistent memory.")]
+    pub async fn uc_auto_store(&self, Parameters(params): Parameters<AutoStoreParams>) -> String {
+        let session_id = params.session_id.unwrap_or_else(|| "default".into());
+        let role = params.role.parse().ok();
+
+        let store_params = uc_core::models::StoreParams {
+            user_id: self.default_user_id.clone(),
+            session_id,
+            chunk_type: uc_core::models::ChunkType::Conversation,
+            role,
+        };
+
+        match self.engine.store(&params.content, store_params).await {
+            Ok(_) => {
+                let _ = self.engine.flush().await;
+                "stored".into()
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "auto-store failed");
+                "ok".into() // don't surface errors to the LLM
+            }
+        }
+    }
+
     #[tool(description = "Store text content to Arweave permanent storage and local vector index")]
     pub async fn uc_store(&self, Parameters(params): Parameters<StoreParams>) -> String {
         let user_id = params.user_id.unwrap_or_else(|| self.default_user_id.clone());
@@ -111,10 +147,22 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "Search stored context using vector similarity, reranking, and context assembly")]
+    #[tool(description = "Search stored context using vector similarity, reranking, and context assembly. Optionally pass current_message to auto-store the user's message.")]
     pub async fn uc_query(&self, Parameters(params): Parameters<QueryParams>) -> String {
         let user_id = params.user_id.as_deref().unwrap_or(&self.default_user_id);
         let max_tokens = params.max_tokens.unwrap_or(50_000);
+
+        // Side-effect: store current message if provided
+        if let Some(ref msg) = params.current_message {
+            let store_params = uc_core::models::StoreParams {
+                user_id: user_id.to_string(),
+                session_id: params.session_id.clone().unwrap_or_else(|| "default".into()),
+                chunk_type: uc_core::models::ChunkType::Conversation,
+                role: Some(uc_core::models::Role::User),
+            };
+            let _ = self.engine.store(msg, store_params).await;
+            let _ = self.engine.flush().await;
+        }
 
         match self
             .engine
@@ -222,8 +270,10 @@ impl ServerHandler for UcMcpServer {
                 .build(),
         );
         info.instructions = Some(
-            "Unlimited Context — persistent LLM memory on Arweave. \
-             Use uc_store to save context, uc_query to retrieve it."
+            "Memoryport — persistent LLM memory on Arweave. \
+             IMPORTANT: Call uc_auto_store with every user message and your assistant response \
+             to build persistent memory across sessions. Use uc_query to retrieve relevant \
+             context when answering questions that might benefit from prior conversations."
                 .into(),
         );
         info
@@ -274,6 +324,7 @@ impl ServerHandler for UcMcpServer {
             let uri = &request.uri;
 
             if uri == "uc://context/auto" {
+                // Return recent conversation context from the latest session
                 let sessions = self
                     .engine
                     .list_sessions(&self.default_user_id)
@@ -281,12 +332,20 @@ impl ServerHandler for UcMcpServer {
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
                 let content = if let Some(latest) = sessions.first() {
-                    let ctx = self
+                    // Get recent chunks from the latest session
+                    let chunks = self
                         .engine
-                        .query("", &self.default_user_id, Some(&latest.session_id), 10_000)
+                        .get_session(&self.default_user_id, &latest.session_id)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-                    ctx.formatted
+
+                    // Format as context, taking last 50 chunks
+                    let recent: Vec<_> = chunks.iter().rev().take(50).rev().cloned().collect();
+                    if recent.is_empty() {
+                        "<unlimited_context/>".into()
+                    } else {
+                        uc_core::assembler::assemble_context(&recent, 10_000).formatted
+                    }
                 } else {
                     "<unlimited_context/>".into()
                 };

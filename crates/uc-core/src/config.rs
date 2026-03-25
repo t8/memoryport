@@ -62,7 +62,7 @@ pub struct IndexConfig {
 }
 
 fn default_index_path() -> String {
-    "~/.unlimited-context/index".into()
+    "~/.memoryport/index".into()
 }
 
 fn default_embedding_dimensions() -> usize {

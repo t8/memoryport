@@ -1,0 +1,21 @@
+{
+  "name": "@memoryport/cli",
+  "version": "0.1.0",
+  "description": "Memoryport — persistent LLM memory on Arweave",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/t8/memoryport"
+  },
+  "bin": {
+    "uc": "bin/uc.js",
+    "uc-mcp": "bin/uc-mcp.js",
+    "uc-proxy": "bin/uc-proxy.js",
+    "uc-server": "bin/uc-server.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "os": ["darwin", "linux"],
+  "cpu": ["x64", "arm64"]
+}
