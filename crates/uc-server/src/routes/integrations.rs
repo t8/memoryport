@@ -316,7 +316,7 @@ async fn toggle_ollama(enabled: bool) -> Result<ToggleResponse, ApiError> {
 
         Ok(ToggleResponse {
             success: true,
-            message: "Ollama capture enabled. The proxy on port 9191 will intercept and capture all Ollama conversations.\n\nTo use with any Ollama client, set:\n  OLLAMA_HOST=http://127.0.0.1:9191\n\nOllama itself is unchanged and the menu bar app stays active.".into(),
+            message: "Ollama capture enabled. Set OLLAMA_HOST=http://127.0.0.1:9191 in Open WebUI, Continue.dev, or your shell profile. The Ollama desktop app and menu bar stay untouched.".into(),
         })
     } else {
         let _ = std::fs::remove_file(&marker);

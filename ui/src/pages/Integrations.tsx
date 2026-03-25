@@ -181,12 +181,12 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-medium text-sm">Ollama Auto-Capture</h3>
-                  <Tooltip content="When enabled, the Memoryport proxy captures all Ollama conversations routed through it. Ollama stays running normally on its default port — nothing is moved or disrupted. Set OLLAMA_HOST=http://127.0.0.1:9191 in your Ollama clients to route through the proxy." />
+                  <Tooltip content="Captures conversations with local Ollama models through the proxy. Works with Open WebUI, Continue.dev, terminal (ollama run), and any tool that supports OLLAMA_HOST. Note: the Ollama desktop chat app doesn't support custom endpoints, so conversations there won't be captured — use one of the supported clients instead." />
                 </div>
                 <p className="text-xs text-zinc-500 mt-0.5">
                   {ollamaEnabled
-                    ? "Capturing Ollama conversations through proxy on port 9191"
-                    : "Memory capture for local Ollama models via proxy"}
+                    ? "Capturing Ollama conversations via Open WebUI, Continue.dev, terminal, and API clients"
+                    : "Memory capture for local Ollama models (Open WebUI, Continue.dev, terminal, API)"}
                 </p>
               </div>
             </div>
@@ -219,7 +219,8 @@ export default function Integrations() {
                 OLLAMA_HOST=http://127.0.0.1:9191
               </div>
               <p className="text-xs text-zinc-500">
-                Set the above env var in any Ollama client to route through Memoryport.
+                Set the above in Open WebUI, Continue.dev, or your shell profile to capture Ollama conversations.
+                The Ollama desktop chat app doesn't support custom endpoints — use a supported client instead.
               </p>
             </div>
           )}
