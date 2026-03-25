@@ -3,8 +3,23 @@ name = "uc-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "MCP server implementation for Unlimited Context"
+description = "MCP server for Unlimited Context — exposes tools and resources via stdio"
+
+[[bin]]
+name = "uc-mcp"
+path = "src/main.rs"
 
 [dependencies]
 uc-core = { workspace = true }
+
 tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+
+rmcp = { workspace = true }
+schemars = { workspace = true }
+clap = { version = "4", features = ["derive"] }

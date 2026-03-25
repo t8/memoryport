@@ -219,6 +219,25 @@ impl Engine {
         Ok(ranked)
     }
 
+    /// Get all chunks for a session, ordered chronologically.
+    pub async fn get_session(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> Result<Vec<SearchResult>, EngineError> {
+        let results = self.index.get_all_for_session(user_id, session_id).await?;
+        Ok(results)
+    }
+
+    /// List all sessions for a user.
+    pub async fn list_sessions(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<models::SessionSummary>, EngineError> {
+        let sessions = self.index.list_sessions(user_id).await?;
+        Ok(sessions)
+    }
+
     /// Force-flush any buffered chunks.
     pub async fn flush(&self) -> Result<(), EngineError> {
         self.batcher.flush().await?;

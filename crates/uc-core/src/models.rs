@@ -173,6 +173,15 @@ pub struct QuerySignals {
     pub is_recency_heavy: bool,
 }
 
+/// Summary info for a stored session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSummary {
+    pub session_id: String,
+    pub chunk_count: usize,
+    pub first_timestamp: i64,
+    pub last_timestamp: i64,
+}
+
 /// Assembled context ready for LLM injection.
 #[derive(Debug, Clone)]
 pub struct AssembledContext {

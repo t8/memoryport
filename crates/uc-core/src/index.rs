@@ -1,4 +1,4 @@
-use crate::models::{Chunk, ChunkType, QueryParams, SearchResult};
+use crate::models::{Chunk, ChunkType, QueryParams, SearchResult, SessionSummary};
 use arrow_array::types::Float32Type;
 use arrow_array::{
     Array, ArrayRef, FixedSizeListArray, Int64Array, RecordBatch, RecordBatchIterator,
@@ -172,6 +172,83 @@ impl Index {
         search_results.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         Ok(search_results)
+    }
+
+    /// Get all chunks for a specific session, ordered by timestamp.
+    pub async fn get_all_for_session(
+        &self,
+        user_id: &str,
+        session_id: &str,
+    ) -> Result<Vec<SearchResult>, IndexError> {
+        let filter = format!(
+            "user_id = '{}' AND session_id = '{}'",
+            sanitize_sql(user_id),
+            sanitize_sql(session_id)
+        );
+
+        let results: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut search_results = Vec::new();
+        for batch in &results {
+            let parsed = parse_search_results(batch)?;
+            search_results.extend(parsed);
+        }
+
+        search_results.sort_by_key(|r| r.timestamp);
+        Ok(search_results)
+    }
+
+    /// List all distinct sessions for a user with summary info.
+    pub async fn list_sessions(&self, user_id: &str) -> Result<Vec<SessionSummary>, IndexError> {
+        let filter = format!("user_id = '{}'", sanitize_sql(user_id));
+
+        let results: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut sessions: std::collections::HashMap<String, SessionSummary> =
+            std::collections::HashMap::new();
+
+        for batch in &results {
+            let session_ids = batch
+                .column_by_name("session_id")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let timestamps = batch
+                .column_by_name("timestamp")
+                .and_then(|c| c.as_any().downcast_ref::<Int64Array>());
+
+            if let (Some(sids), Some(tss)) = (session_ids, timestamps) {
+                for i in 0..batch.num_rows() {
+                    let sid = sids.value(i).to_string();
+                    let ts = tss.value(i);
+                    let entry = sessions.entry(sid.clone()).or_insert(SessionSummary {
+                        session_id: sid,
+                        chunk_count: 0,
+                        first_timestamp: ts,
+                        last_timestamp: ts,
+                    });
+                    entry.chunk_count += 1;
+                    entry.first_timestamp = entry.first_timestamp.min(ts);
+                    entry.last_timestamp = entry.last_timestamp.max(ts);
+                }
+            }
+        }
+
+        let mut summaries: Vec<SessionSummary> = sessions.into_values().collect();
+        summaries.sort_by(|a, b| b.last_timestamp.cmp(&a.last_timestamp));
+        Ok(summaries)
     }
 
     /// Count total rows, optionally filtered by user_id.

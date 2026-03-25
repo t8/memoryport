@@ -3,8 +3,24 @@ name = "uc-proxy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "OpenAI-compatible API proxy for Unlimited Context"
+description = "OpenAI-compatible API proxy for Unlimited Context — automatic context injection"
+
+[[bin]]
+name = "uc-proxy"
+path = "src/main.rs"
 
 [dependencies]
 uc-core = { workspace = true }
+
 tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+futures = { workspace = true }
+
+axum = { workspace = true }
+tower-http = { workspace = true }
+clap = { version = "4", features = ["derive"] }
