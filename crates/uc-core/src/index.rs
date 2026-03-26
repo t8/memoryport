@@ -55,13 +55,22 @@ pub struct Index {
     db: lancedb::Connection,
     table: lancedb::Table,
     dimensions: usize,
+    last_checkout: std::sync::atomic::AtomicU64,
 }
 
 impl Index {
     /// Ensure we're reading the latest version of the table.
-    /// Required when another process (e.g., the proxy) writes to the same LanceDB.
+    /// Throttled to once per second to avoid excessive metadata reads at scale.
     async fn checkout_latest(&self) -> Result<(), IndexError> {
-        self.table.checkout_latest().await?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let last = self.last_checkout.load(std::sync::atomic::Ordering::Relaxed);
+        if now > last {
+            self.table.checkout_latest().await?;
+            self.last_checkout.store(now, std::sync::atomic::Ordering::Relaxed);
+        }
         Ok(())
     }
 }
@@ -80,12 +89,27 @@ impl Index {
             db.create_empty_table(TABLE_NAME, schema).execute().await?
         };
 
+        // Create scalar indexes for fast filtered queries (idempotent — no-op if they exist)
+        let _ = table
+            .create_index(&["user_id"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+        let _ = table
+            .create_index(&["session_id"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+        let _ = table
+            .create_index(&["timestamp"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+
         debug!(path = %db_path_str, dimensions, "opened LanceDB index");
 
         Ok(Self {
             db,
             table,
             dimensions,
+            last_checkout: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -184,6 +208,7 @@ impl Index {
     }
 
     /// Get all chunks for a specific session, ordered by timestamp.
+    /// Skips checkout_latest for speed — session data doesn't change after creation.
     pub async fn get_all_for_session(
         &self,
         user_id: &str,
@@ -195,7 +220,6 @@ impl Index {
             sanitize_sql(session_id)
         );
 
-        self.checkout_latest().await?;
         let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)

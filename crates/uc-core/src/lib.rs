@@ -381,7 +381,7 @@ impl Engine {
             &self.index,
             self.embeddings.as_ref(),
             user_id,
-            0.5, // similarity threshold
+            0.75, // similarity threshold — only connect closely related sessions
         )
         .await
         .map_err(|_| EngineError::Index(crate::index::IndexError::NoResults))?;

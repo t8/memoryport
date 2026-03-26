@@ -8666,6 +8666,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "directories",
+ "dirs 6.0.0",
  "futures",
  "hex",
  "lancedb",

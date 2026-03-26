@@ -1,6 +1,7 @@
 use crate::index::Index;
 use crate::models::SessionSummary;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use thiserror::Error;
 use uc_embeddings::EmbeddingProvider;
 
@@ -12,13 +13,13 @@ pub enum GraphError {
     Embedding(#[from] uc_embeddings::EmbeddingError),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphData {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNode {
     pub id: String,
     pub label: String,
@@ -29,15 +30,48 @@ pub struct GraphNode {
     pub y: f32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphEdge {
     pub source: String,
     pub target: String,
     pub weight: f32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct GraphCache {
+    fingerprint: String,
+    data: GraphData,
+}
+
+fn cache_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".memoryport")
+        .join("graph-cache.json")
+}
+
+fn load_cache(fingerprint: &str) -> Option<GraphData> {
+    let content = std::fs::read_to_string(cache_path()).ok()?;
+    let cache: GraphCache = serde_json::from_str(&content).ok()?;
+    if cache.fingerprint == fingerprint {
+        Some(cache.data)
+    } else {
+        None
+    }
+}
+
+fn save_cache(fingerprint: &str, data: &GraphData) {
+    let cache = GraphCache {
+        fingerprint: fingerprint.to_string(),
+        data: data.clone(),
+    };
+    if let Ok(json) = serde_json::to_string(&cache) {
+        let _ = std::fs::write(cache_path(), json);
+    }
+}
+
 /// Compute a session-level graph for visualization.
-/// Nodes = sessions, edges = cosine similarity between session mean embeddings.
+/// Caches results on disk — only recomputes when sessions/chunks change.
 pub async fn compute_session_graph(
     index: &Index,
     embeddings: &dyn EmbeddingProvider,
@@ -53,6 +87,17 @@ pub async fn compute_session_graph(
             edges: Vec::new(),
         });
     }
+
+    // Check cache — fingerprint is session count + total chunks
+    let total_chunks: usize = sessions.iter().map(|s| s.chunk_count).sum();
+    let fingerprint = format!("{}:{}:{}", user_id, sessions.len(), total_chunks);
+
+    if let Some(cached) = load_cache(&fingerprint) {
+        tracing::debug!(sessions = sessions.len(), chunks = total_chunks, "returning cached graph");
+        return Ok(cached);
+    }
+
+    tracing::info!(sessions = sessions.len(), chunks = total_chunks, "computing graph (cache miss)");
 
     // Compute mean embedding per session
     let mut session_embeddings: Vec<(SessionSummary, Vec<f32>)> = Vec::new();
@@ -123,7 +168,9 @@ pub async fn compute_session_graph(
         }
     }
 
-    Ok(GraphData { nodes, edges })
+    let result = GraphData { nodes, edges };
+    save_cache(&fingerprint, &result);
+    Ok(result)
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
