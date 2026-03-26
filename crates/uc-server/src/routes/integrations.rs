@@ -177,14 +177,19 @@ async fn toggle_proxy(
     let proxy_url = "http://127.0.0.1:9191".to_string();
 
     if enabled {
-        // Set ANTHROPIC_BASE_URL in env
-        data.as_object_mut()
+        // Save the original ANTHROPIC_BASE_URL before overwriting
+        let env = data.as_object_mut()
             .unwrap()
             .entry("env")
-            .or_insert(serde_json::json!({}))
-            .as_object_mut()
-            .unwrap()
-            .insert("ANTHROPIC_BASE_URL".into(), serde_json::json!(proxy_url));
+            .or_insert(serde_json::json!({}));
+        if let Some(env_obj) = env.as_object_mut() {
+            if let Some(original) = env_obj.get("ANTHROPIC_BASE_URL") {
+                if original.as_str() != Some(&proxy_url) {
+                    env_obj.insert("_MEMORYPORT_ORIGINAL_BASE_URL".into(), original.clone());
+                }
+            }
+            env_obj.insert("ANTHROPIC_BASE_URL".into(), serde_json::json!(proxy_url));
+        }
 
         // Start proxy process in background
         let proxy_bin = find_uc_proxy_binary();
@@ -205,9 +210,13 @@ async fn toggle_proxy(
             .spawn()
             .map_err(|e| ApiError::Internal(format!("Failed to start proxy: {e}")))?;
     } else {
-        // Remove ANTHROPIC_BASE_URL
+        // Restore original ANTHROPIC_BASE_URL if we saved one, otherwise remove it
         if let Some(env) = data.get_mut("env").and_then(|e| e.as_object_mut()) {
-            env.remove("ANTHROPIC_BASE_URL");
+            if let Some(original) = env.remove("_MEMORYPORT_ORIGINAL_BASE_URL") {
+                env.insert("ANTHROPIC_BASE_URL".into(), original);
+            } else {
+                env.remove("ANTHROPIC_BASE_URL");
+            }
         }
 
         // Kill proxy process

@@ -319,3 +319,7 @@ export async function registerMcp(): Promise<void> {
 export async function registerProxy(): Promise<void> {
   if (IS_TAURI) return tauriInvoke("register_proxy");
 }
+
+export async function unregisterProxy(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("unregister_proxy");
+}

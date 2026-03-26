@@ -871,6 +871,8 @@ pub async fn register_proxy() -> Result<(), String> {
         .ok_or("no home dir")?
         .join(".claude.json");
 
+    let proxy_url = "http://127.0.0.1:9191";
+
     let mut data: serde_json::Value = if claude_json.exists() {
         let content = std::fs::read_to_string(&claude_json).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
@@ -878,16 +880,56 @@ pub async fn register_proxy() -> Result<(), String> {
         serde_json::json!({})
     };
 
-    data.as_object_mut()
-        .unwrap()
-        .entry("env")
-        .or_insert(serde_json::json!({}))
+    let env = data
         .as_object_mut()
         .unwrap()
-        .insert(
+        .entry("env")
+        .or_insert(serde_json::json!({}));
+
+    if let Some(env_obj) = env.as_object_mut() {
+        // Save original ANTHROPIC_BASE_URL before overwriting
+        if let Some(original) = env_obj.get("ANTHROPIC_BASE_URL") {
+            if original.as_str() != Some(proxy_url) {
+                env_obj.insert(
+                    "_MEMORYPORT_ORIGINAL_BASE_URL".into(),
+                    original.clone(),
+                );
+            }
+        }
+        env_obj.insert(
             "ANTHROPIC_BASE_URL".into(),
-            serde_json::json!("http://127.0.0.1:9191"),
+            serde_json::json!(proxy_url),
         );
+    }
+
+    let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+    std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unregister_proxy() -> Result<(), String> {
+    let claude_json = dirs::home_dir()
+        .ok_or("no home dir")?
+        .join(".claude.json");
+
+    if !claude_json.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&claude_json).map_err(|e| e.to_string())?;
+    let mut data: serde_json::Value =
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+
+    if let Some(env) = data.get_mut("env").and_then(|e| e.as_object_mut()) {
+        // Restore original if we saved one, otherwise remove entirely
+        if let Some(original) = env.remove("_MEMORYPORT_ORIGINAL_BASE_URL") {
+            env.insert("ANTHROPIC_BASE_URL".into(), original);
+        } else {
+            env.remove("ANTHROPIC_BASE_URL");
+        }
+    }
 
     let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
     std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;

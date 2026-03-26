@@ -121,6 +121,7 @@ pub fn run() {
             commands::pull_ollama_model,
             commands::register_mcp,
             commands::register_proxy,
+            commands::unregister_proxy,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Memoryport");
