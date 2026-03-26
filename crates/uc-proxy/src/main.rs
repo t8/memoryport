@@ -1,3 +1,4 @@
+mod agentic;
 mod anthropic;
 mod models;
 mod routes;
@@ -47,6 +48,8 @@ async fn main() -> anyhow::Result<()> {
         .listen
         .unwrap_or_else(|| config.proxy.listen.clone());
 
+    let agentic_config = config.proxy.agentic.clone();
+
     let engine = Arc::new(Engine::new(config).await?);
 
     let state = Arc::new(ProxyState {
@@ -55,6 +58,8 @@ async fn main() -> anyhow::Result<()> {
         user_id: cli.user_id,
         sessions: routes::SessionManager::new(1800), // 30 min inactivity = new session
         context_budget: 50_000,
+        agentic_config,
+        no_tool_models: tokio::sync::Mutex::new(std::collections::HashSet::new()),
     });
 
     let app = Router::new()

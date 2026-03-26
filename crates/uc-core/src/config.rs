@@ -184,6 +184,8 @@ pub struct ProxyConfig {
     #[serde(default = "default_listen")]
     pub listen: String,
     pub upstream: Option<String>,
+    #[serde(default)]
+    pub agentic: AgenticProxyConfig,
 }
 
 fn default_listen() -> String {
@@ -195,6 +197,30 @@ impl Default for ProxyConfig {
         Self {
             listen: default_listen(),
             upstream: None,
+            agentic: AgenticProxyConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgenticProxyConfig {
+    /// Enable agentic retrieval loop (inject tools, let LLM query memory iteratively).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Maximum tool-call rounds before returning the response.
+    #[serde(default = "default_max_rounds")]
+    pub max_rounds: u32,
+}
+
+fn default_max_rounds() -> u32 {
+    3
+}
+
+impl Default for AgenticProxyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_rounds: 3,
         }
     }
 }

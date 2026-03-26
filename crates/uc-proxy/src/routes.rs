@@ -1,7 +1,7 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, warn};
@@ -12,6 +12,8 @@ pub struct ProxyState {
     pub user_id: String,
     pub sessions: SessionManager,
     pub context_budget: u32,
+    pub agentic_config: uc_core::config::AgenticProxyConfig,
+    pub no_tool_models: Mutex<HashSet<String>>,
 }
 
 /// Manages session IDs per source. Creates a new session after 30 minutes of inactivity.
@@ -140,6 +142,25 @@ pub async fn proxy_completions(
         return forward_openai_raw(&state, &headers, &body, upstream).await;
     }
 
+    // Agentic path: inject tools and let the LLM query memory iteratively
+    if state.agentic_config.enabled && !crate::agentic::is_disabled_by_header(&headers) {
+        let model = request.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string();
+        let is_no_tool_model = state.no_tool_models.lock().await.contains(&model);
+
+        if !is_no_tool_model {
+            let format = if upstream.contains("localhost") || upstream.contains("127.0.0.1") {
+                crate::agentic::ApiFormat::Ollama
+            } else {
+                crate::agentic::ApiFormat::OpenAi
+            };
+            return crate::agentic::run_agentic_loop(
+                &state, &headers, &mut request, format, upstream, "openai",
+            )
+            .await;
+        }
+    }
+
+    // Fallback: single-shot context injection (original behavior)
     debug!(query_len = last_user_msg.len(), upstream = upstream, "processing OpenAI-format request");
 
     let clean_query = crate::anthropic::sanitize_query_pub(&last_user_msg);
@@ -397,6 +418,28 @@ pub async fn forward_ollama_any(
     };
 
     // Inject context into /api/chat requests (skip internal/meta requests)
+    // Agentic path for /api/chat
+    if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request
+        && state.agentic_config.enabled && !crate::agentic::is_disabled_by_header(&headers)
+    {
+        let is_no_tool_model = state.no_tool_models.lock().await.contains(&model);
+        if !is_no_tool_model {
+            if let Ok(mut req_json) = serde_json::from_slice::<serde_json::Value>(&body) {
+                // Ollama /api/chat needs stream:false for the loop, and uses the Ollama upstream
+                return crate::agentic::run_agentic_loop(
+                    &state,
+                    &headers,
+                    &mut req_json,
+                    crate::agentic::ApiFormat::Ollama,
+                    &format!("http://127.0.0.1:{}", ollama_port),
+                    "ollama",
+                )
+                .await;
+            }
+        }
+    }
+
+    // Fallback: single-shot context injection (original behavior)
     let modified_body = if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
         let clean_query = crate::anthropic::sanitize_query_pub(&user_msg);
         let current_session = state.sessions.get_session("ollama").await;

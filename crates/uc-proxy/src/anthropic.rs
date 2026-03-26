@@ -29,6 +29,20 @@ pub async fn proxy_messages(
         return forward_raw(&state, &headers, &body).await;
     }
 
+    // Agentic path: inject tools and let the LLM query memory iteratively
+    if state.agentic_config.enabled && !crate::agentic::is_disabled_by_header(&headers) {
+        return crate::agentic::run_agentic_loop(
+            &state,
+            &headers,
+            &mut request,
+            crate::agentic::ApiFormat::Anthropic,
+            ANTHROPIC_UPSTREAM,
+            "anthropic",
+        )
+        .await;
+    }
+
+    // Fallback: single-shot context injection (original behavior)
     debug!(query_len = last_user_msg.len(), "extracting context for Anthropic message");
 
     let clean_query = sanitize_query(&last_user_msg);
