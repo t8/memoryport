@@ -104,16 +104,26 @@ jobs:
         working-directory: crates/uc-tauri/src-tauri
         run: cargo tauri build --target ${{ matrix.target }}
 
+      - name: Find bundle artifacts
+        id: find
+        shell: bash
+        run: |
+          echo "Searching for Tauri bundles..."
+          find target -name "*.dmg" -o -name "*.app" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.deb" 2>/dev/null | head -20
+          echo "---"
+          # Collect all bundle paths
+          mkdir -p dist
+          find target -name "*.dmg" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -name "*.AppImage" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -name "*.msi" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -name "*.deb" -exec cp {} dist/ \; 2>/dev/null || true
+          ls -la dist/ || echo "No bundles found"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: memoryport-${{ matrix.binary_suffix }}
-          path: |
-            target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            target/${{ matrix.target }}/release/bundle/macos/*.app
-            target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-            target/${{ matrix.target }}/release/bundle/msi/*.msi
-            target/${{ matrix.target }}/release/bundle/nsis/*.exe
+          path: dist/*
           if-no-files-found: ignore
 
   release:
