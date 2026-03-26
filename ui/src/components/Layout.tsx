@@ -2,6 +2,7 @@ import { Outlet, NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   BarChart3,
+  Network,
   Plug,
   Settings,
 } from "lucide-react";
@@ -9,6 +10,7 @@ import {
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/analytics", icon: BarChart3, label: "Analytics" },
+  { to: "/graph", icon: Network, label: "Graph" },
   { to: "/integrations", icon: Plug, label: "Integrations" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];

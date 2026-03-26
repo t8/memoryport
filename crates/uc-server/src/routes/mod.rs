@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod analytics;
+pub mod graph;
 pub mod health;
 pub mod integrations;
 pub mod settings;

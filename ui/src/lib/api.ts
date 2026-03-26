@@ -102,6 +102,34 @@ export async function retrieve(
   return httpPost("/v1/retrieve", { query, top_k: topK });
 }
 
+// ── Graph ──
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  chunk_count: number;
+  first_timestamp: number;
+  last_timestamp: number;
+  x: number;
+  y: number;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+}
+
+export async function getGraph(): Promise<GraphData> {
+  if (IS_TAURI) return tauriInvoke("get_graph");
+  return httpGet("/v1/graph/sessions");
+}
+
 // ── Integrations ──
 
 export interface IntegrationsStatus {

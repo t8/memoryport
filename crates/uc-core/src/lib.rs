@@ -7,6 +7,7 @@ pub mod config;
 pub mod crypto;
 pub mod enhancer;
 pub mod gate;
+pub mod graph;
 pub mod index;
 pub mod keystore;
 pub mod models;
@@ -368,6 +369,22 @@ impl Engine {
         let data = analytics::compute_analytics(&self.index, user_id)
             .await
             .map_err(|e| EngineError::Index(crate::index::IndexError::NoResults))?;
+        Ok(data)
+    }
+
+    /// Compute session-level knowledge graph.
+    pub async fn graph(
+        &self,
+        user_id: &str,
+    ) -> Result<graph::GraphData, EngineError> {
+        let data = graph::compute_session_graph(
+            &self.index,
+            self.embeddings.as_ref(),
+            user_id,
+            0.5, // similarity threshold
+        )
+        .await
+        .map_err(|_| EngineError::Index(crate::index::IndexError::NoResults))?;
         Ok(data)
     }
 
