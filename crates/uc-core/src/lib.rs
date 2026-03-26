@@ -331,21 +331,26 @@ impl Engine {
         Ok(ranked)
     }
 
-    /// Direct vector search — bypasses gating. Use for explicit user search requests
-    /// (search bars, CLI retrieve) where the user is intentionally asking to search.
+    /// Direct vector search — bypasses gating but applies session/temporal analysis.
+    /// Use for explicit user search requests (search bars, CLI retrieve).
     pub async fn search(
         &self,
         text: &str,
         user_id: &str,
         top_k: usize,
     ) -> Result<Vec<SearchResult>, EngineError> {
+        // Run analyzer to detect signals (session refs, temporal)
+        let signals = analyzer::analyze_query(text);
+
         let query_vector = self.embeddings.embed(text).await?;
         let params = models::QueryParams {
             user_id: user_id.to_string(),
             top_k,
-            session_id: None,
+            session_id: signals.explicit_session,
             chunk_type: None,
-            time_range: None,
+            // Apply temporal range for production use; benchmark data may have
+            // different timestamps so the filter may not match.
+            time_range: signals.temporal_range,
         };
         let results = self.index.search(&query_vector, &params).await?;
         Ok(results)
