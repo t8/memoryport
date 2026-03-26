@@ -103,23 +103,32 @@ impl Index {
             .execute()
             .await;
 
-        // Create IVF-PQ vector index for fast ANN search at scale.
-        // Only effective when the table has enough rows; LanceDB handles this gracefully.
+        // Build IVF-PQ vector index in the background (non-blocking).
+        // Without it, search still works (brute-force). The ANN index accelerates
+        // queries once the background build finishes.
         let row_count = table.count_rows(None).await.unwrap_or(0);
         if row_count >= 10_000 {
-            let num_partitions = ((row_count as f64).sqrt() as u32).max(16).min(1024);
-            let _ = table
-                .create_index(
-                    &["vector"],
-                    lancedb::index::Index::IvfPq(
-                        lancedb::index::vector::IvfPqIndexBuilder::default()
-                            .num_partitions(num_partitions)
-                            .num_sub_vectors((dimensions / 16) as u32)
-                    ),
-                )
-                .execute()
-                .await;
-            debug!(partitions = num_partitions, rows = row_count, "IVF-PQ vector index created/updated");
+            let bg_table = table.clone();
+            let bg_dims = dimensions;
+            tokio::spawn(async move {
+                let num_partitions = ((row_count as f64).sqrt() as u32).max(16).min(1024);
+                tracing::info!(partitions = num_partitions, rows = row_count, "building IVF-PQ vector index in background");
+                match bg_table
+                    .create_index(
+                        &["vector"],
+                        lancedb::index::Index::IvfPq(
+                            lancedb::index::vector::IvfPqIndexBuilder::default()
+                                .num_partitions(num_partitions)
+                                .num_sub_vectors((bg_dims / 16) as u32)
+                        ),
+                    )
+                    .execute()
+                    .await
+                {
+                    Ok(_) => tracing::info!("IVF-PQ vector index built successfully"),
+                    Err(e) => tracing::warn!(error = %e, "IVF-PQ index build failed (search still works without it)"),
+                }
+            });
         }
 
         debug!(path = %db_path_str, dimensions, "opened LanceDB index");
