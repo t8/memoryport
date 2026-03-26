@@ -45,7 +45,15 @@ export default function Dashboard() {
     setSelectedSession(sessionId);
     try {
       const data = await getSession(sessionId);
-      setSessionChunks(data.chunks);
+      // Sort: oldest first, and user before assistant at same timestamp
+      const sorted = [...data.chunks].sort((a, b) => {
+        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+        // Same timestamp: user before assistant
+        const roleOrder = (r: string | null) =>
+          r === "user" ? 0 : r === "assistant" ? 1 : 2;
+        return roleOrder(a.role) - roleOrder(b.role);
+      });
+      setSessionChunks(sorted);
     } catch (err) {
       console.error("Failed to load session:", err);
       setSessionChunks([]);

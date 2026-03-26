@@ -116,12 +116,16 @@ pub async fn proxy_completions(
 
     let clean_query = crate::anthropic::sanitize_query_pub(&last_user_msg);
 
-    // Search for context (best-effort)
+    // Get current session ID so we can exclude it from context injection
+    let current_session = state.sessions.get_session("openai").await;
+
+    // Search for context (best-effort), excluding current session
     let context = match state.engine.search(&clean_query, &state.user_id, 20).await {
         Ok(ref results) => {
             let clean: Vec<_> = results
                 .iter()
                 .filter(|r| !crate::anthropic::is_system_prompt_leak_pub(&r.content))
+                .filter(|r| r.session_id != current_session) // exclude current conversation
                 .cloned()
                 .collect();
             if clean.is_empty() {
@@ -367,11 +371,13 @@ pub async fn forward_ollama_any(
     // Inject context into /api/chat requests (skip internal/meta requests)
     let modified_body = if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
         let clean_query = crate::anthropic::sanitize_query_pub(&user_msg);
+        let current_session = state.sessions.get_session("ollama").await;
         let injected = match state.engine.search(&clean_query, &state.user_id, 20).await {
             Ok(ref results) => {
                 let clean: Vec<_> = results
                     .iter()
                     .filter(|r| !crate::anthropic::is_system_prompt_leak_pub(&r.content))
+                    .filter(|r| r.session_id != current_session) // exclude current conversation
                     .cloned()
                     .collect();
                 if clean.is_empty() {
