@@ -6,6 +6,7 @@ import {
   Plug,
   Settings,
 } from "lucide-react";
+import ServiceStatus from "./ServiceStatus";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -42,6 +43,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </div>
+        <ServiceStatus />
         <div className="p-4 border-t border-zinc-800 text-xs text-zinc-600">
           v0.1.0
         </div>

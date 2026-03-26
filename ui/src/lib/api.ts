@@ -225,3 +225,97 @@ export async function restartServer(): Promise<void> {
 export function isTauri(): boolean {
   return IS_TAURI;
 }
+
+// ── Setup + Service Health ──
+
+export interface ServiceInfo {
+  name: string;
+  status: "running" | "stopped" | "starting" | "unhealthy" | "crashed";
+  uptime_secs: number | null;
+  restart_count: number;
+  details: string | null;
+}
+
+export interface ServiceHealthResponse {
+  engine: ServiceInfo;
+  proxy: ServiceInfo;
+  mcp: ServiceInfo;
+  ollama: ServiceInfo;
+}
+
+export async function checkConfigExists(): Promise<boolean> {
+  if (IS_TAURI) return tauriInvoke("check_config_exists");
+  // Web mode: assume config exists (server wouldn't be running otherwise)
+  return true;
+}
+
+export async function getServiceHealth(): Promise<ServiceHealthResponse> {
+  if (IS_TAURI) return tauriInvoke("get_service_health");
+  // Web mode: check server health directly
+  try {
+    await httpGet("/health");
+    return {
+      engine: { name: "engine", status: "running", uptime_secs: null, restart_count: 0, details: null },
+      proxy: { name: "proxy", status: "running", uptime_secs: null, restart_count: 0, details: null },
+      mcp: { name: "mcp", status: "stopped", uptime_secs: null, restart_count: 0, details: "check via Tauri" },
+      ollama: { name: "ollama", status: "stopped", uptime_secs: null, restart_count: 0, details: null },
+    };
+  } catch {
+    return {
+      engine: { name: "engine", status: "stopped", uptime_secs: null, restart_count: 0, details: null },
+      proxy: { name: "proxy", status: "stopped", uptime_secs: null, restart_count: 0, details: null },
+      mcp: { name: "mcp", status: "stopped", uptime_secs: null, restart_count: 0, details: null },
+      ollama: { name: "ollama", status: "stopped", uptime_secs: null, restart_count: 0, details: null },
+    };
+  }
+}
+
+export async function startServices(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("start_services");
+}
+
+export async function stopServices(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("stop_services");
+}
+
+export async function restartServiceByName(service: string): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("restart_service", { service });
+}
+
+export interface SetupConfig {
+  provider: string;
+  model: string;
+  dimensions: number;
+  api_key: string | null;
+  uc_api_key: string | null;
+}
+
+export async function writeInitialConfig(config: SetupConfig): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("write_initial_config", { config });
+}
+
+export async function initEngine(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("init_engine");
+}
+
+export async function checkOllamaInstalled(): Promise<boolean> {
+  if (IS_TAURI) return tauriInvoke("check_ollama_installed");
+  return false;
+}
+
+export async function installOllama(): Promise<string> {
+  if (IS_TAURI) return tauriInvoke("install_ollama");
+  return "not supported in web mode";
+}
+
+export async function pullOllamaModel(model: string): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("pull_ollama_model", { model });
+}
+
+export async function registerMcp(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("register_mcp");
+}
+
+export async function registerProxy(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("register_proxy");
+}
