@@ -48,7 +48,10 @@ async fn main() -> anyhow::Result<()> {
         .listen
         .unwrap_or_else(|| config.proxy.listen.clone());
 
-    let agentic_config = config.proxy.agentic.clone();
+    let agentic_config = routes::HotConfig::new(
+        std::path::PathBuf::from(&cli.config),
+        config.proxy.agentic.clone(),
+    );
 
     let engine = Arc::new(Engine::new(config).await?);
 

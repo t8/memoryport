@@ -30,7 +30,8 @@ pub async fn proxy_messages(
     }
 
     // Agentic path: inject tools and let the LLM query memory iteratively
-    if state.agentic_config.enabled && !crate::agentic::is_disabled_by_header(&headers) {
+    let agentic = state.agentic_config.agentic().await;
+    if agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
         return crate::agentic::run_agentic_loop(
             &state,
             &headers,

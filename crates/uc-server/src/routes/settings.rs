@@ -10,8 +10,14 @@ use crate::state::AppState;
 pub struct SettingsResponse {
     pub embeddings: EmbeddingsSettings,
     pub retrieval: RetrievalSettings,
+    pub proxy: ProxySettings,
     pub arweave: ArweaveSettings,
     pub encryption: EncryptionSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProxySettings {
+    pub agentic_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,6 +89,9 @@ pub async fn get_settings(
             gating_enabled: config.retrieval.gating_enabled,
             similarity_top_k: config.retrieval.similarity_top_k,
             recency_window: config.retrieval.recency_window,
+        },
+        proxy: ProxySettings {
+            agentic_enabled: config.proxy.agentic.enabled,
         },
         arweave: ArweaveSettings {
             gateway: config.arweave.gateway.clone(),
@@ -162,6 +171,21 @@ pub async fn update_settings(
         }
     }
 
+    // Update proxy section
+    if let Some(ref proxy) = body.proxy {
+        let section = table
+            .entry("proxy")
+            .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+        if let Some(section) = section.as_table_mut() {
+            let agentic = section
+                .entry("agentic")
+                .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+            if let Some(agentic) = agentic.as_table_mut() {
+                agentic.insert("enabled".into(), toml::Value::Boolean(proxy.agentic_enabled));
+            }
+        }
+    }
+
     // Update encryption section
     if let Some(ref encryption) = body.encryption {
         let section = table
@@ -196,6 +220,7 @@ pub async fn restart_server() -> Result<Json<serde_json::Value>, ApiError> {
 pub struct SettingsUpdate {
     pub embeddings: Option<EmbeddingsSettings>,
     pub retrieval: Option<RetrievalSettings>,
+    pub proxy: Option<ProxySettings>,
     pub arweave: Option<ArweaveSettingsUpdate>,
     pub encryption: Option<EncryptionSettings>,
 }

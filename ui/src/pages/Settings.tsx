@@ -179,6 +179,29 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* Proxy */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium">Proxy</h3>
+          <Tooltip content="The proxy sits between your editor and the AI provider, injecting relevant context and capturing conversations automatically." />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm">Multi-turn Retrieval</p>
+            <p className="text-xs text-zinc-500">Let the LLM iteratively query memory with tool calls before responding</p>
+          </div>
+          <Toggle
+            enabled={settings.proxy?.agentic_enabled ?? true}
+            onChange={(v) =>
+              setSettings({
+                ...settings,
+                proxy: { ...settings.proxy, agentic_enabled: v },
+              })
+            }
+          />
+        </div>
+      </section>
+
       {/* Arweave */}
       <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
         <div className="flex items-center gap-2">

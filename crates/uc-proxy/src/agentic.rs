@@ -671,7 +671,7 @@ pub async fn run_agentic_loop(
     upstream_base: &str,
     session_source: &str,
 ) -> Result<Response, StatusCode> {
-    let max_rounds = state.agentic_config.max_rounds;
+    let max_rounds = state.agentic_config.agentic().await.max_rounds;
     let upstream_url = match format {
         ApiFormat::Anthropic => format!("{upstream_base}/v1/messages"),
         ApiFormat::OpenAi => format!("{upstream_base}/v1/chat/completions"),

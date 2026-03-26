@@ -12,8 +12,45 @@ pub struct ProxyState {
     pub user_id: String,
     pub sessions: SessionManager,
     pub context_budget: u32,
-    pub agentic_config: uc_core::config::AgenticProxyConfig,
+    pub agentic_config: HotConfig,
     pub no_tool_models: Mutex<HashSet<String>>,
+}
+
+/// Hot-reloadable config that re-reads from disk when the file changes.
+pub struct HotConfig {
+    config_path: std::path::PathBuf,
+    cached: Mutex<HotConfigCache>,
+}
+
+struct HotConfigCache {
+    agentic: uc_core::config::AgenticProxyConfig,
+    mtime: Option<std::time::SystemTime>,
+}
+
+impl HotConfig {
+    pub fn new(config_path: std::path::PathBuf, initial: uc_core::config::AgenticProxyConfig) -> Self {
+        let mtime = std::fs::metadata(&config_path).ok().and_then(|m| m.modified().ok());
+        Self {
+            config_path,
+            cached: Mutex::new(HotConfigCache { agentic: initial, mtime }),
+        }
+    }
+
+    pub async fn agentic(&self) -> uc_core::config::AgenticProxyConfig {
+        let current_mtime = std::fs::metadata(&self.config_path).ok().and_then(|m| m.modified().ok());
+        let mut cache = self.cached.lock().await;
+
+        if current_mtime != cache.mtime {
+            // File changed — reload
+            if let Ok(config) = uc_core::config::Config::from_file(&self.config_path) {
+                debug!("hot-reloaded proxy config from disk");
+                cache.agentic = config.proxy.agentic;
+                cache.mtime = current_mtime;
+            }
+        }
+
+        cache.agentic.clone()
+    }
 }
 
 /// Manages session IDs per source. Creates a new session after 30 minutes of inactivity.
@@ -143,7 +180,8 @@ pub async fn proxy_completions(
     }
 
     // Agentic path: inject tools and let the LLM query memory iteratively
-    if state.agentic_config.enabled && !crate::agentic::is_disabled_by_header(&headers) {
+    let agentic = state.agentic_config.agentic().await;
+    if agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
         let model = request.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string();
         let is_no_tool_model = state.no_tool_models.lock().await.contains(&model);
 
@@ -419,8 +457,9 @@ pub async fn forward_ollama_any(
 
     // Inject context into /api/chat requests (skip internal/meta requests)
     // Agentic path for /api/chat
+    let ollama_agentic = state.agentic_config.agentic().await;
     if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request
-        && state.agentic_config.enabled && !crate::agentic::is_disabled_by_header(&headers)
+        && ollama_agentic.enabled && !crate::agentic::is_disabled_by_header(&headers)
     {
         let is_no_tool_model = state.no_tool_models.lock().await.contains(&model);
         if !is_no_tool_model {

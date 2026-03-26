@@ -197,6 +197,9 @@ export interface SettingsData {
     api_endpoint: string | null;
     address: string | null;
   };
+  proxy?: {
+    agentic_enabled: boolean;
+  };
   encryption: {
     enabled: boolean;
   };
