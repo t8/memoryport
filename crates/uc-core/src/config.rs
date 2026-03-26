@@ -33,6 +33,11 @@ pub struct ArweaveConfig {
     #[serde(default = "default_turbo_endpoint")]
     pub turbo_endpoint: String,
     pub wallet_path: Option<String>,
+    /// Memoryport Pro API key (uc_...). Also reads from UC_API_KEY env var.
+    pub api_key: Option<String>,
+    /// API endpoint for key validation and usage reporting.
+    #[serde(default = "default_api_endpoint")]
+    pub api_endpoint: Option<String>,
 }
 
 fn default_gateway() -> String {
@@ -43,12 +48,18 @@ fn default_turbo_endpoint() -> String {
     "https://upload.ardrive.io".into()
 }
 
+fn default_api_endpoint() -> Option<String> {
+    Some("https://memoryport.dev/api".into())
+}
+
 impl Default for ArweaveConfig {
     fn default() -> Self {
         Self {
             gateway: default_gateway(),
             turbo_endpoint: default_turbo_endpoint(),
             wallet_path: None,
+            api_key: None,
+            api_endpoint: default_api_endpoint(),
         }
     }
 }
@@ -237,6 +248,26 @@ impl Config {
     pub fn resolved_wallet_path(&self) -> Option<PathBuf> {
         self.arweave.wallet_path.as_ref().map(|p| expand_tilde(p))
     }
+
+    /// Resolve the API key from config or UC_API_KEY env var.
+    pub fn resolved_api_key(&self) -> Option<String> {
+        self.arweave
+            .api_key
+            .clone()
+            .or_else(|| std::env::var("UC_API_KEY").ok())
+    }
+
+    /// Resolve the API endpoint, defaulting to memoryport.dev.
+    pub fn resolved_api_endpoint(&self) -> String {
+        self.arweave
+            .api_endpoint
+            .clone()
+            .unwrap_or_else(|| "https://memoryport.dev/api".into())
+    }
+}
+
+pub fn expand_tilde_pub(path: &str) -> PathBuf {
+    expand_tilde(path)
 }
 
 fn expand_tilde(path: &str) -> PathBuf {

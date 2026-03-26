@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }

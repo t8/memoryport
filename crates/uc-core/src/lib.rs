@@ -1,3 +1,4 @@
+pub mod account;
 pub mod analytics;
 pub mod analyzer;
 pub mod assembler;
@@ -88,12 +89,45 @@ impl Engine {
             Index::open(&index_path, config.index.embedding_dimensions).await?,
         );
 
-        // Create Arweave client (read-only if no wallet)
-        let arweave = if config.arweave.wallet_path.is_some() {
-            let resolved = config.resolved_wallet_path().unwrap();
-            let wallet = Wallet::from_file(&resolved)?;
-            info!(address = %wallet.address, "loaded Arweave wallet");
-            ArweaveClient::new(wallet, &config.arweave.turbo_endpoint, &config.arweave.gateway)
+        // Create Arweave client
+        // If API key is set but no wallet exists, auto-generate one
+        let api_key = config.resolved_api_key();
+        let arweave = if let Some(ref wallet_path) = config.arweave.wallet_path {
+            let resolved = crate::config::expand_tilde_pub(wallet_path);
+            if resolved.exists() {
+                let wallet = Wallet::from_file(&resolved)?;
+                info!(address = %wallet.address, "loaded Arweave wallet");
+                ArweaveClient::new(wallet, &config.arweave.turbo_endpoint, &config.arweave.gateway)
+            } else if api_key.is_some() {
+                // API key configured but wallet file doesn't exist — generate one
+                info!(path = %resolved.display(), "generating new Arweave wallet");
+                let wallet = Wallet::generate()?;
+                if let Some(parent) = resolved.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                wallet.save_to_file(&resolved)?;
+                info!(address = %wallet.address, path = %resolved.display(), "wallet generated and saved");
+                ArweaveClient::new(wallet, &config.arweave.turbo_endpoint, &config.arweave.gateway)
+            } else {
+                ArweaveClient::read_only(&config.arweave.turbo_endpoint, &config.arweave.gateway)
+            }
+        } else if api_key.is_some() {
+            // API key but no wallet_path — use default path
+            let default_path = crate::config::expand_tilde_pub("~/.memoryport/wallet.json");
+            if default_path.exists() {
+                let wallet = Wallet::from_file(&default_path)?;
+                info!(address = %wallet.address, "loaded Arweave wallet from default path");
+                ArweaveClient::new(wallet, &config.arweave.turbo_endpoint, &config.arweave.gateway)
+            } else {
+                info!("generating new Arweave wallet at default path");
+                let wallet = Wallet::generate()?;
+                if let Some(parent) = default_path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                wallet.save_to_file(&default_path)?;
+                info!(address = %wallet.address, "wallet generated and saved");
+                ArweaveClient::new(wallet, &config.arweave.turbo_endpoint, &config.arweave.gateway)
+            }
         } else {
             ArweaveClient::read_only(&config.arweave.turbo_endpoint, &config.arweave.gateway)
         };
@@ -126,13 +160,33 @@ impl Engine {
             (None, None)
         };
 
-        let writer = {
-            let w = Writer::new_from_arc(arweave.clone());
-            if let (Some(ref mk), Some(ref ks)) = (&master_key, &keystore) {
-                Arc::new(w.with_encryption(mk.clone(), ks.clone()))
-            } else {
-                Arc::new(w)
+        // Create AccountClient if API key is configured
+        let account_client = if let Some(ref key) = api_key {
+            let endpoint = config.resolved_api_endpoint();
+            let client = Arc::new(account::AccountClient::new(endpoint, key.clone()));
+
+            // Register wallet address on first use (best-effort)
+            if let Some(addr) = arweave.address() {
+                match client.validate(addr).await {
+                    Ok(v) => info!(user_id = %v.user_id, tier = %v.tier, "registered with Memoryport"),
+                    Err(e) => tracing::warn!(error = %e, "failed to validate API key (will retry on upload)"),
+                }
             }
+
+            Some(client)
+        } else {
+            None
+        };
+
+        let writer = {
+            let mut w = Writer::new_from_arc(arweave.clone());
+            if let (Some(ref mk), Some(ref ks)) = (&master_key, &keystore) {
+                w = w.with_encryption(mk.clone(), ks.clone());
+            }
+            if let Some(ref ac) = account_client {
+                w = w.with_account(ac.clone());
+            }
+            Arc::new(w)
         };
 
         // Create query enhancer (if LLM configured for expansion / HyDE)

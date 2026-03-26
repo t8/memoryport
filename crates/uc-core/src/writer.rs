@@ -1,3 +1,4 @@
+use crate::account::AccountClient;
 use crate::crypto::{self, EncryptedBatchKey, MasterKey};
 use crate::keystore::KeyStore;
 use crate::models::{Batch, BatchPayload, UploadReceipt};
@@ -5,7 +6,7 @@ use crate::tagger;
 use chrono::Utc;
 use std::sync::Arc;
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uc_arweave::{ArweaveClient, ArweaveError, Tag};
 
 #[derive(Debug, Error)]
@@ -27,6 +28,7 @@ pub struct Writer {
     arweave: Arc<ArweaveClient>,
     master_key: Option<MasterKey>,
     keystore: Option<Arc<KeyStore>>,
+    account: Option<Arc<AccountClient>>,
 }
 
 impl Writer {
@@ -35,12 +37,18 @@ impl Writer {
             arweave,
             master_key: None,
             keystore: None,
+            account: None,
         }
     }
 
     pub fn with_encryption(mut self, master_key: MasterKey, keystore: Arc<KeyStore>) -> Self {
         self.master_key = Some(master_key);
         self.keystore = Some(keystore);
+        self
+    }
+
+    pub fn with_account(mut self, account: Arc<AccountClient>) -> Self {
+        self.account = Some(account);
         self
     }
 
@@ -76,21 +84,62 @@ impl Writer {
                 "batch encrypted with AES-256-GCM"
             );
 
-            // We'll store the key after upload (need tx_id)
             encrypted.to_bytes()
         } else {
             json_bytes
         };
 
-        // 4. Upload to Arweave (skip if no wallet — local-only mode)
-        let tx_id = match self.arweave.upload(&upload_bytes, &tags).await {
+        // 4. Check API key / credit sharing if account is configured
+        let paid_by = if let Some(ref account) = self.account {
+            let wallet_address = self
+                .arweave
+                .address()
+                .unwrap_or_default()
+                .to_string();
+
+            match account.is_upload_allowed(&wallet_address).await {
+                Ok((true, funder_address)) => {
+                    debug!(funder = %funder_address, "upload authorized via API key");
+                    Some(funder_address)
+                }
+                Ok((false, _)) => {
+                    warn!("upload not authorized (not pro tier), falling back to local-only");
+                    None
+                }
+                Err(e) => {
+                    warn!(error = %e, "API key validation failed, falling back to local-only");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // 5. Upload to Arweave (skip if no wallet — local-only mode)
+        let tx_id = match self
+            .arweave
+            .upload(&upload_bytes, &tags, paid_by.as_deref())
+            .await
+        {
             Ok(response) => {
                 info!(
                     batch_id = %batch.id,
                     tx_id = %response.id,
                     encrypted = self.master_key.is_some(),
+                    paid_by = ?paid_by,
                     "batch uploaded to Arweave"
                 );
+
+                // Report usage (best-effort, non-blocking)
+                if let Some(ref account) = self.account {
+                    let account = account.clone();
+                    let bytes = upload_bytes.len() as u64;
+                    let tid = response.id.clone();
+                    tokio::spawn(async move {
+                        account.report_usage(bytes, &tid).await;
+                    });
+                }
+
                 response.id
             }
             Err(uc_arweave::ArweaveError::NoWallet) => {
@@ -106,7 +155,7 @@ impl Writer {
             Err(e) => return Err(WriterError::Upload(e)),
         };
 
-        // 5. Store encrypted batch key in keystore (if encrypted)
+        // 6. Store encrypted batch key in keystore (if encrypted)
         if self.master_key.is_some() {
             if let Some(ref keystore) = self.keystore {
                 if let Some(key_tag) = tags.iter().find(|t| t.name == "UC-Batch-Key") {

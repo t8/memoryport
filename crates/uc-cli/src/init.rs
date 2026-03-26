@@ -40,7 +40,7 @@ fn yellow(s: &str) -> String {
 }
 
 fn step(n: u8, msg: &str) {
-    println!("  {} {}", cyan(&format!("[{n}/4]")), bold(msg));
+    println!("  {} {}", cyan(&format!("[{n}/6]")), bold(msg));
 }
 
 fn success(msg: &str) {
@@ -74,7 +74,7 @@ pub fn run_init() -> anyhow::Result<()> {
     }
 
     // ── Step 1: Choose embedding provider ──
-    step(1, "Choose your embedding provider (1/5)");
+    step(1, "Choose your embedding provider");
     println!();
     println!("     Memoryport needs an embedding model to understand your text.");
     println!("     Embeddings convert words into numbers so we can find");
@@ -98,23 +98,53 @@ pub fn run_init() -> anyhow::Result<()> {
         _ => unreachable!(),
     };
 
-    // ── Step 2: Create directories + config ──
+    // ── Step 2: Cloud storage (optional API key) ──
     println!();
-    step(2, "Writing configuration (2/5)");
+    step(2, "Cloud storage");
+    println!();
+    println!("     Memoryport can back up your memory permanently to Arweave.");
+    println!("     This requires a Pro subscription at {}", bold("memoryport.dev"));
+    println!();
+    let uc_api_key_input: String = dialoguer::Input::new()
+        .with_prompt("  API key (press Enter to skip)")
+        .allow_empty(true)
+        .interact_text()?;
+    let uc_api_key: Option<String> = if uc_api_key_input.starts_with("uc_") {
+        success("API key configured");
+        Some(uc_api_key_input)
+    } else if uc_api_key_input.is_empty() {
+        info("Skipped — local-only mode (you can add an API key later)");
+        None
+    } else {
+        println!("     {} API key should start with uc_", yellow("!"));
+        info("Skipped — local-only mode");
+        None
+    };
+
+    // ── Step 3: Create directories + config ──
+    println!();
+    step(3, "Writing configuration");
     std::fs::create_dir_all(uc_dir.join("index"))?;
-    let config_content = generate_config(&provider, &model, dimensions, api_key.as_deref(), &uc_dir);
+    let config_content = generate_config(
+        &provider,
+        &model,
+        dimensions,
+        api_key.as_deref(),
+        uc_api_key.as_deref(),
+        &uc_dir,
+    );
     std::fs::write(&config_path, &config_content)?;
     success(&format!("Config written to {}", config_path.display()));
     success(&format!("Index directory at {}/index", uc_dir.display()));
 
-    // ── Step 3: Register MCP servers ──
+    // ── Step 4: Register MCP servers ──
     println!();
-    step(3, "Registering MCP server in editors (3/5)");
+    step(4, "Registering MCP server in editors");
     register_mcp_servers(&uc_dir)?;
 
-    // ── Step 4: Auto-capture proxy ──
+    // ── Step 5: Auto-capture proxy ──
     println!();
-    step(4, "Auto-capture proxy (4/5)");
+    step(5, "Auto-capture proxy");
     println!();
     println!("     The proxy captures every conversation automatically —");
     println!("     both your messages and the AI's responses. It sits");
@@ -132,15 +162,20 @@ pub fn run_init() -> anyhow::Result<()> {
         info("Proxy not enabled. You can enable it later by re-running uc init.");
     }
 
-    // ── Step 5: Summary ──
+    // ── Step 6: Summary ──
     println!();
-    step(5, "Done! (5/5)");
+    step(6, "Done!");
     println!();
     println!();
     println!("  {} Memoryport is ready.", green("✓"));
     println!();
     success(&format!("Config:   {}", config_path.display()));
     success(&format!("Provider: {provider} / {model}"));
+    if uc_api_key.is_some() {
+        success("Arweave:  Pro storage enabled (wallet will be generated on first run)");
+    } else {
+        success("Storage:  local-only");
+    }
     if enable_proxy {
         success("Proxy:    auto-capture enabled");
     }
@@ -258,24 +293,25 @@ fn generate_config(
     model: &str,
     dimensions: usize,
     api_key: Option<&str>,
+    uc_api_key: Option<&str>,
     uc_dir: &Path,
 ) -> String {
-    let mut config = format!(
-        r#"[arweave]
-gateway = "https://arweave.net"
-turbo_endpoint = "https://upload.ardrive.io"
+    let mut config = "[arweave]\ngateway = \"https://arweave.net\"\nturbo_endpoint = \"https://upload.ardrive.io\"\n".to_string();
 
-[index]
-path = "{}/index"
-embedding_dimensions = {dimensions}
+    if let Some(key) = uc_api_key {
+        config.push_str(&format!("api_key = \"{key}\"\n"));
+        config.push_str(&format!(
+            "wallet_path = \"{}/wallet.json\"\n",
+            uc_dir.display()
+        ));
+    }
 
-[embeddings]
-provider = "{provider}"
-model = "{model}"
-dimensions = {dimensions}
-"#,
-        uc_dir.display()
-    );
+    {
+        let dir = uc_dir.display();
+        config.push_str(&format!(
+            "\n[index]\npath = \"{dir}/index\"\nembedding_dimensions = {dimensions}\n\n[embeddings]\nprovider = \"{provider}\"\nmodel = \"{model}\"\ndimensions = {dimensions}\n"
+        ));
+    }
 
     if let Some(key) = api_key {
         config.push_str(&format!("api_key = \"{key}\"\n"));

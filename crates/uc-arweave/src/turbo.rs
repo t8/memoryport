@@ -28,22 +28,30 @@ impl TurboClient {
     /// Upload a signed ANS-104 data item to ar.io Turbo.
     ///
     /// Sends raw binary bytes to `POST /v1/tx` with `application/octet-stream`.
-    pub async fn upload(&self, data_item: &SignedDataItem) -> Result<TurboUploadResponse, TurboError> {
+    pub async fn upload(
+        &self,
+        data_item: &SignedDataItem,
+        paid_by: Option<&str>,
+    ) -> Result<TurboUploadResponse, TurboError> {
         let url = format!("{}/v1/tx", self.endpoint);
 
         debug!(
             id = %data_item.id,
             size = data_item.bytes.len(),
+            paid_by = ?paid_by,
             "uploading data item to Turbo"
         );
 
-        let response = self
+        let mut request = self
             .http
             .post(&url)
-            .header("Content-Type", "application/octet-stream")
-            .body(data_item.bytes.clone())
-            .send()
-            .await?;
+            .header("Content-Type", "application/octet-stream");
+
+        if let Some(funder) = paid_by {
+            request = request.header("x-paid-by", funder);
+        }
+
+        let response = request.body(data_item.bytes.clone()).send().await?;
 
         let status = response.status();
         if !status.is_success() {

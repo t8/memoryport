@@ -46,14 +46,16 @@ impl ArweaveClient {
     }
 
     /// Create, sign, and upload a data item to Arweave via Turbo.
+    /// If `paid_by` is set, includes the `x-paid-by` header for credit sharing.
     pub async fn upload(
         &self,
         data: &[u8],
         tags: &[Tag],
+        paid_by: Option<&str>,
     ) -> Result<TurboUploadResponse, ArweaveError> {
         let wallet = self.wallet.as_ref().ok_or(ArweaveError::NoWallet)?;
         let data_item = transaction::create_data_item(wallet, data, tags, None, None)?;
-        let response = self.turbo.upload(&data_item).await?;
+        let response = self.turbo.upload(&data_item, paid_by).await?;
         Ok(response)
     }
 
