@@ -23,3 +23,6 @@ ui/.vite
 
 # Tauri
 crates/uc-tauri/src-tauri/target
+
+# Large test datasets (download separately)
+tests/longmemeval/data/*.json
