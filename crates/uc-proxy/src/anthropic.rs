@@ -31,13 +31,14 @@ pub async fn proxy_messages(
 
     // Agentic path: inject tools and let the LLM query memory iteratively
     let agentic = state.agentic_config.agentic().await;
+    let upstream_base = state.anthropic_upstream.as_deref().unwrap_or(ANTHROPIC_UPSTREAM);
     if agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
         return crate::agentic::run_agentic_loop(
             &state,
             &headers,
             &mut request,
             crate::agentic::ApiFormat::Anthropic,
-            ANTHROPIC_UPSTREAM,
+            upstream_base,
             "anthropic",
         )
         .await;
@@ -223,7 +224,8 @@ async fn forward_raw(
     original_headers: &HeaderMap,
     body: &[u8],
 ) -> Result<Response, StatusCode> {
-    let upstream = format!("{}/v1/messages", ANTHROPIC_UPSTREAM);
+    let base = state.anthropic_upstream.as_deref().unwrap_or(ANTHROPIC_UPSTREAM);
+    let upstream = format!("{}/v1/messages", base);
 
     let mut req_builder = state
         .http

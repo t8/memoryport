@@ -53,6 +53,8 @@ async fn main() -> anyhow::Result<()> {
         config.proxy.agentic.clone(),
     );
 
+    let anthropic_upstream = config.proxy.upstream.clone();
+
     let engine = Arc::new(Engine::new(config).await?);
 
     let state = Arc::new(ProxyState {
@@ -63,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
         context_budget: 50_000,
         agentic_config,
         no_tool_models: tokio::sync::Mutex::new(std::collections::HashSet::new()),
+        anthropic_upstream,
     });
 
     let app = Router::new()

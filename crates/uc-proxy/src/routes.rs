@@ -14,6 +14,8 @@ pub struct ProxyState {
     pub context_budget: u32,
     pub agentic_config: HotConfig,
     pub no_tool_models: Mutex<HashSet<String>>,
+    /// Optional upstream override (from config or env). Used for Anthropic routing.
+    pub anthropic_upstream: Option<String>,
 }
 
 /// Hot-reloadable config that re-reads from disk when the file changes.

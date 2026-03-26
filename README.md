@@ -280,11 +280,28 @@ Prevents unnecessary retrieval on simple messages:
 | Gate 2: Embedding routing | Compare query embedding against "needs retrieval" vs "skip" centroids. | ~0ms (reuses existing embedding) |
 | Gate 3: Quality threshold | Drop results below relevance score. | ~0ms (checks existing scores) |
 
+### Proxy Latency Overhead
+
+Measures the latency added by the proxy in each mode using a mock upstream (50ms simulated LLM delay):
+
+| Mode | p50 | p95 | mean | Overhead vs direct |
+|------|-----|-----|------|--------------------|
+| Direct (no proxy) | 58ms | 61ms | 58ms | — |
+| Single-turn (context injection) | 108ms | 120ms | 107ms | +49ms |
+| Multi-turn (agentic loop, 1 round) | 139ms | 145ms | 139ms | +81ms |
+
+Single-turn overhead is dominated by embedding + LanceDB search. Multi-turn adds one extra round trip to the upstream for tool execution.
+
 Run benchmarks yourself:
 ```bash
 python3 tests/stress/generate.py --chunks 10000
 python3 tests/stress/benchmark.py
 python3 tests/longmemeval/run_benchmark.py --questions 50 --dataset oracle
+
+# Latency benchmark (requires mock upstream + proxy pointed at it)
+python3 tests/latency/mock_upstream.py --port 8199 &
+# Set upstream = "http://127.0.0.1:8199" in uc.toml, then start proxy on port 9292
+python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://127.0.0.1:8199
 ```
 
 ## License
