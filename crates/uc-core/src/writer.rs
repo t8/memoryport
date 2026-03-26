@@ -143,7 +143,6 @@ impl Writer {
                 response.id
             }
             Err(uc_arweave::ArweaveError::NoWallet) => {
-                // Local-only mode: generate a synthetic tx_id
                 let local_id = format!("local_{}", batch.id);
                 debug!(
                     batch_id = %batch.id,
@@ -152,7 +151,17 @@ impl Writer {
                 );
                 local_id
             }
-            Err(e) => return Err(WriterError::Upload(e)),
+            Err(e) => {
+                // Upload failed — fall back to local-only instead of losing data
+                let local_id = format!("local_{}", batch.id);
+                warn!(
+                    batch_id = %batch.id,
+                    tx_id = %local_id,
+                    error = %e,
+                    "Arweave upload failed, storing locally only"
+                );
+                local_id
+            }
         };
 
         // 6. Store encrypted batch key in keystore (if encrypted)

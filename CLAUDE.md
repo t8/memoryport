@@ -89,6 +89,14 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 
 **Dependency graph:** `uc-arweave` and `uc-embeddings` have no internal deps. `uc-core` depends on both. Everything else depends on `uc-core`.
 
+## Terminology
+
+- **Context window**: tokens the LLM sees in one call (model constraint, e.g. 200K)
+- **Context space**: total persistent memory available for retrieval and injection (system property, measured in tokens/chunks/bytes)
+- **Chunk**: ~1,500 characters ≈ **375 tokens** (with 200-char overlap between adjacent chunks). Character-based splitting at sentence boundaries.
+- **Batch**: group of up to 50 chunks flushed together as one Arweave transaction
+- **AMP**: Augmented Memory Protocol — the [open spec](https://github.com/t8/amp-spec) for how memory enters the prompt
+
 ## Key Technical Decisions
 
 - **ANS-104 from scratch** — deep hash (SHA-384), Avro tag encoding, RSA-PSS signing.
