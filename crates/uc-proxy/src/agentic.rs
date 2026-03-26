@@ -2,7 +2,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde_json::Value;
 use std::sync::Arc;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::routes::ProxyState;
 
@@ -688,9 +688,10 @@ pub async fn run_agentic_loop(
     // Inject our tool definitions
     inject_tools(request, format);
 
-    eprintln!(
-        "[memoryport-proxy] agentic loop: starting ({:?}, max_rounds={})",
-        format, max_rounds
+    info!(
+        ?format,
+        max_rounds,
+        "agentic loop: starting"
     );
 
     let mut final_response: Option<Value> = None;
@@ -704,9 +705,10 @@ pub async fn run_agentic_loop(
 
         if !status.is_success() {
             // Upstream error — return immediately
-            eprintln!(
-                "[memoryport-proxy] agentic loop: upstream error (round {}, status {})",
-                round, status
+            warn!(
+                round,
+                status = %status,
+                "agentic loop: upstream error"
             );
             let body_bytes = serde_json::to_vec(&resp_json).unwrap_or_default();
             let mut response = (status, body_bytes).into_response();
@@ -718,9 +720,9 @@ pub async fn run_agentic_loop(
 
         match classify_response(&resp_json, format) {
             ResponseAction::Final => {
-                eprintln!(
-                    "[memoryport-proxy] agentic loop: final response (round {})",
-                    round
+                info!(
+                    round,
+                    "agentic loop: final response"
                 );
                 final_response = Some(resp_json);
                 final_status = status;
@@ -731,11 +733,11 @@ pub async fn run_agentic_loop(
                 our_calls,
                 has_client_calls,
             } => {
-                eprintln!(
-                    "[memoryport-proxy] agentic loop: round {} — {} memoryport tool calls{}",
+                debug!(
                     round,
-                    our_calls.len(),
-                    if has_client_calls { " (+ client calls)" } else { "" }
+                    tool_calls = our_calls.len(),
+                    has_client_calls,
+                    "agentic loop: processing memoryport tool calls"
                 );
 
                 // Execute our tool calls
@@ -743,10 +745,10 @@ pub async fn run_agentic_loop(
                 for call in &our_calls {
                     debug!(tool = %call.name, "executing memoryport tool");
                     let result = execute_tool(&state.engine, &state.user_id, call).await;
-                    eprintln!(
-                        "[memoryport-proxy]   {} → {} chars",
-                        call.name,
-                        result.content.len()
+                    debug!(
+                        tool = %call.name,
+                        result_len = result.content.len(),
+                        "tool execution complete"
                     );
                     results.push(result);
                 }

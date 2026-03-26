@@ -23,6 +23,7 @@ pub struct QueryRequest {
 #[derive(Debug, Deserialize)]
 pub struct RetrieveRequest {
     pub query: String,
+    #[allow(dead_code)]
     pub session_id: Option<String>,
     #[serde(default = "default_top_k")]
     pub top_k: usize,

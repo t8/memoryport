@@ -1,8 +1,4 @@
 use crate::index::Index;
-use crate::models::SearchResult;
-use arrow_array::{Array, Int64Array, StringArray};
-use futures::TryStreamExt;
-use lancedb::query::{ExecutableQuery, QueryBase};
 use serde::Serialize;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -52,8 +48,8 @@ pub async fn compute_analytics(
 
     let mut activity_map: HashMap<String, usize> = HashMap::new();
     let mut by_type: HashMap<String, usize> = HashMap::new();
-    let mut by_source: HashMap<String, usize> = HashMap::new();
-    let mut by_model: HashMap<String, usize> = HashMap::new();
+    let by_source: HashMap<String, usize> = HashMap::new();
+    let by_model: HashMap<String, usize> = HashMap::new();
     let mut sessions: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut synced = 0usize;
     let mut local = 0usize;

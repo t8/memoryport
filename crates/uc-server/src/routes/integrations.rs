@@ -155,7 +155,7 @@ fn toggle_mcp(enabled: bool) -> Result<ToggleResponse, ApiError> {
 
 async fn toggle_proxy(
     enabled: bool,
-    config: &uc_core::config::Config,
+    _config: &uc_core::config::Config,
 ) -> Result<ToggleResponse, ApiError> {
     let claude_json_path = dirs::home_dir()
         .unwrap_or_default()
@@ -358,6 +358,7 @@ fn check_proxy_configured() -> bool {
     false
 }
 
+#[allow(dead_code)]
 fn find_ollama_binary() -> String {
     for path in &["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"] {
         if std::path::Path::new(path).exists() {

@@ -206,7 +206,7 @@ export default function Settings() {
       <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
         <div className="flex items-center gap-2">
           <h3 className="font-medium">Arweave Storage</h3>
-          <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.dev includes Turbo credits for uploads. Without an API key, memories are stored locally only." />
+          <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.ai includes Turbo credits for uploads. Without an API key, memories are stored locally only." />
         </div>
         <div>
           <label className="block text-xs text-zinc-500 mb-1">API Key</label>
@@ -219,13 +219,13 @@ export default function Settings() {
                 arweave: { ...settings.arweave, api_key: e.target.value || null },
               })
             }
-            placeholder="uc_... (from memoryport.dev/dashboard)"
+            placeholder="uc_... (from memoryport.ai/dashboard)"
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-zinc-500"
           />
           <p className="text-xs text-zinc-600 mt-1">
             Get a key at{" "}
-            <a href="https://memoryport.dev/dashboard" target="_blank" rel="noopener" className="text-zinc-400 hover:text-zinc-300 underline">
-              memoryport.dev
+            <a href="https://memoryport.ai/dashboard" target="_blank" rel="noopener" className="text-zinc-400 hover:text-zinc-300 underline">
+              memoryport.ai
             </a>
             {" "}— or set UC_API_KEY env var
           </p>

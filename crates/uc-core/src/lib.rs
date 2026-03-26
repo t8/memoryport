@@ -427,7 +427,7 @@ impl Engine {
     ) -> Result<analytics::AnalyticsData, EngineError> {
         let data = analytics::compute_analytics(&self.index, user_id)
             .await
-            .map_err(|e| EngineError::Index(crate::index::IndexError::NoResults))?;
+            .map_err(|_e| EngineError::Index(crate::index::IndexError::NoResults))?;
         Ok(data)
     }
 

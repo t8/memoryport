@@ -409,7 +409,7 @@ pub async fn forward_ollama_any(
     let ollama_port = get_ollama_port();
     let path = uri.path().to_string();
     let upstream = format!("http://127.0.0.1:{}{}", ollama_port, path);
-    eprintln!("[memoryport-proxy] forwarding {} {} -> {}", method, path, upstream);
+    debug!(method = %method, path = %path, upstream = %upstream, "forwarding request");
 
     // Extract user message + model from /api/chat or /api/generate before forwarding
     let (user_msg, model) = if (path == "/api/chat" || path == "/api/generate") && !body.is_empty() {
@@ -497,7 +497,7 @@ pub async fn forward_ollama_any(
                 } else {
                     let ctx = uc_core::assembler::assemble_context(&clean, state.context_budget);
                     if ctx.chunks_included > 0 {
-                        eprintln!("[memoryport-proxy] injecting {} chunks into Ollama /api/chat", ctx.chunks_included);
+                        debug!(chunks = ctx.chunks_included, "injecting context into Ollama /api/chat");
                         Some(crate::anthropic::format_plain_context(&ctx.formatted))
                     } else {
                         None

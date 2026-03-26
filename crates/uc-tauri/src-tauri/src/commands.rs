@@ -474,6 +474,7 @@ pub async fn get_settings(
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct SettingsUpdatePayload {
     settings: serde_json::Value,
 }

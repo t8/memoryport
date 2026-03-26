@@ -9,12 +9,32 @@ Memoryport is a Rust workspace that gives LLM interactions persistent, queryable
 ```bash
 cargo check                # type-check entire workspace
 cargo build                # build all crates
-cargo test --workspace     # run all tests (59 tests)
+cargo test --workspace     # run all tests (64+ tests)
 cargo build -p uc-cli      # CLI only
 cargo build -p uc-mcp      # MCP server only
 cargo build -p uc-proxy    # API proxy only
 cargo build -p uc-server   # hosted API server only
 cd ui && pnpm dev          # React dashboard dev server
+```
+
+### Dev Script (recommended)
+
+```bash
+./dev.sh start    # Build and start server + proxy + UI
+./dev.sh stop     # Stop all services
+./dev.sh restart  # Rebuild and restart everything
+./dev.sh status   # Show what's running
+./dev.sh server   # Rebuild and restart just the server
+./dev.sh proxy    # Rebuild and restart just the proxy
+./dev.sh ui       # Restart just the UI
+./dev.sh logs proxy  # Tail proxy logs
+```
+
+### Tauri Desktop App
+
+```bash
+cd crates/uc-tauri/src-tauri && cargo tauri dev    # Dev mode (needs UI dev server running)
+cd crates/uc-tauri/src-tauri && cargo tauri build   # Production .dmg/.app
 ```
 
 ### Prerequisites
@@ -83,6 +103,10 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - **Content sanitization** — strip `<system-reminder>`, `<local-command-*>`, Open WebUI title/tag generation, Claude Code memory file dumps before storage and retrieval.
 - **Open WebUI meta-request detection** — skip title/tag/emoji generation requests (contain "### Task:", "JSON format", etc.) for both injection and capture.
 - **Source tagging** — every chunk tagged with `source_integration` (proxy, proxy-ollama, mcp, cli, api) and `source_model` (claude-opus-4-20250514, llama3.2:1b, etc.).
+- **API key + Turbo credit sharing** — Pro users get a `uc_` API key from memoryport.ai. Local client validates against `/api/validate`, auto-generates an Arweave wallet, uploads with `x-paid-by` header for Turbo credit sharing.
+- **AccountClient** — `uc-core/src/account.rs` handles key validation (1-hour cache), usage reporting, graceful fallback to local-only on network errors.
+- **Hot-reloadable proxy config** — `HotConfig` in proxy checks config file mtime on each request. Settings changes (e.g., multi-turn toggle) take effect without proxy restart.
+- **Augmented Memory Protocol (AMP)** — the context injection approach is being standardized as [AMP](https://github.com/t8/amp-spec), defining how memory enters the prompt (append, system, tool strategies).
 
 ## Conventions
 

@@ -136,7 +136,7 @@ pub async fn compute_session_graph(
     let nodes: Vec<GraphNode> = session_embeddings
         .iter()
         .enumerate()
-        .map(|(i, (session, emb))| {
+        .map(|(_i, (session, emb))| {
             // Simple 2D projection: take two embedding dimensions and scale
             let x = if emb.len() > 0 { emb[0] * 500.0 } else { 0.0 };
             let y = if emb.len() > 1 { emb[1] * 500.0 } else { 0.0 };

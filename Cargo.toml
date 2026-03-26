@@ -14,7 +14,11 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
+repository = "https://github.com/t8/memoryport"
+homepage = "https://memoryport.ai"
+keywords = ["arweave", "lancedb", "rag", "embeddings", "llm", "memory"]
+description = "Persistent queryable memory for LLMs using Arweave and LanceDB"
 
 [workspace.dependencies]
 # Serialization

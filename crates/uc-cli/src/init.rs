@@ -103,7 +103,7 @@ pub fn run_init() -> anyhow::Result<()> {
     step(2, "Cloud storage");
     println!();
     println!("     Memoryport can back up your memory permanently to Arweave.");
-    println!("     This requires a Pro subscription at {}", bold("memoryport.dev"));
+    println!("     This requires a Pro subscription at {}", bold("memoryport.ai"));
     println!();
     let uc_api_key_input: String = dialoguer::Input::new()
         .with_prompt("  API key (press Enter to skip)")

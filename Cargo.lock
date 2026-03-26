@@ -8778,6 +8778,8 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tokio",
+ "toml 0.8.2",
+ "uc-arweave",
  "uc-core",
 ]
 

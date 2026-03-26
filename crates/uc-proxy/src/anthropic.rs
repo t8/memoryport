@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, warn};
 
 use crate::routes::ProxyState;
 
@@ -59,10 +59,10 @@ pub async fn proxy_messages(
                 .filter(|r| r.session_id != current_session)
                 .cloned()
                 .collect();
-            eprintln!(
-                "[memoryport-proxy] search returned {} results ({} after filtering)",
-                results.len(),
-                clean.len()
+            debug!(
+                total = results.len(),
+                filtered = clean.len(),
+                "search returned results"
             );
             if clean.is_empty() {
                 None
@@ -71,7 +71,7 @@ pub async fn proxy_messages(
             }
         }
         Err(ref e) => {
-            eprintln!("[memoryport-proxy] search error: {e}");
+            warn!(error = %e, "search error");
             None
         }
     };
@@ -79,9 +79,10 @@ pub async fn proxy_messages(
     // 3. Inject context by appending to the last user message in the raw JSON
     if let Some(ref ctx) = context {
         if ctx.chunks_included > 0 {
-            eprintln!(
-                "[memoryport-proxy] injecting {} chunks ({} tokens)",
-                ctx.chunks_included, ctx.token_count
+            debug!(
+                chunks = ctx.chunks_included,
+                tokens = ctx.token_count,
+                "injecting context"
             );
 
             let plain_context = format_plain_context(&ctx.formatted);
@@ -129,10 +130,10 @@ pub async fn proxy_messages(
                 source_model: Some(model),
             };
             if let Err(e) = engine.store(&msg, params).await {
-                eprintln!("[memoryport-proxy] store FAILED: {e}");
+                error!(error = %e, "store failed");
             }
             if let Err(e) = engine.flush().await {
-                eprintln!("[memoryport-proxy] flush FAILED: {e}");
+                error!(error = %e, "flush failed");
             }
         });
     }
@@ -289,7 +290,7 @@ async fn forward_raw(
                     source_model: Some(model),
                 };
                 if let Err(e) = engine.store(&assistant_text, params).await {
-                    eprintln!("[memoryport-proxy] store assistant FAILED: {e}");
+                    error!(error = %e, "store assistant failed");
                 }
                 let _ = engine.flush().await;
             });

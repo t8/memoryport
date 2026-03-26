@@ -231,7 +231,7 @@ fn detect_temporal_range(query: &str, now_ms: i64) -> Option<(i64, i64)> {
 /// Parse "last N days/weeks/months" or "last two days", "last three weeks", etc.
 fn parse_last_n(query: &str, unit: &str, unit_ms: i64, now_ms: i64) -> Option<(i64, i64)> {
     // "last N <unit>s" or "last N <unit>"
-    let patterns = [
+    let _patterns = [
         format!("last {} {}", "{}", unit),
         format!("last {} {}s", "{}", unit),
     ];

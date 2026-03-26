@@ -49,7 +49,7 @@ fn default_turbo_endpoint() -> String {
 }
 
 fn default_api_endpoint() -> Option<String> {
-    Some("https://memoryport.dev/api".into())
+    Some("https://memoryport.ai/api".into())
 }
 
 impl Default for ArweaveConfig {
@@ -283,12 +283,12 @@ impl Config {
             .or_else(|| std::env::var("UC_API_KEY").ok())
     }
 
-    /// Resolve the API endpoint, defaulting to memoryport.dev.
+    /// Resolve the API endpoint, defaulting to memoryport.ai.
     pub fn resolved_api_endpoint(&self) -> String {
         self.arweave
             .api_endpoint
             .clone()
-            .unwrap_or_else(|| "https://memoryport.dev/api".into())
+            .unwrap_or_else(|| "https://memoryport.ai/api".into())
     }
 }
 
