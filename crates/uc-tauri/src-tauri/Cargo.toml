@@ -14,6 +14,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 uc-core = { path = "../../uc-core" }
+uc-arweave = { path = "../../uc-arweave" }
+toml = "0.8"
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }

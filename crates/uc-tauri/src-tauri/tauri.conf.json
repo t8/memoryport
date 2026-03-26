@@ -5,8 +5,8 @@
   "version": "0.1.0",
   "build": {
     "frontendDist": "../../../ui/dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd ../../../ui && pnpm dev",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "",
     "beforeBuildCommand": "cd ../../../ui && pnpm build"
   },
   "app": {
