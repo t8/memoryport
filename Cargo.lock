@@ -8762,6 +8762,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uc-arweave",
  "uc-core",
  "uuid",
 ]

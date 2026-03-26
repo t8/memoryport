@@ -10,6 +10,7 @@ pub struct AppState {
     pub user_db: Arc<UserDb>,
     pub rate_limiter: Arc<RateLimiter>,
     pub server_config: ServerConfig,
+    pub config_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -193,6 +193,9 @@ export interface SettingsData {
   arweave: {
     gateway: string;
     wallet_path: string | null;
+    api_key: string | null;
+    api_endpoint: string | null;
+    address: string | null;
   };
   encryption: {
     enabled: boolean;

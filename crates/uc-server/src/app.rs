@@ -33,7 +33,7 @@ pub fn build_router(state: Arc<AppState>, metrics_handle: PrometheusHandle) -> R
         .route("/sessions/{id}", get(routes::sessions::get_session))
         .route("/status", get(routes::status::status))
         .route("/analytics", get(routes::analytics::analytics))
-        .route("/settings", get(routes::settings::get_settings))
+        .route("/settings", get(routes::settings::get_settings).post(routes::settings::update_settings))
         .route("/integrations", get(routes::integrations::get_integrations))
         .route("/integrations/toggle", post(routes::integrations::toggle_integration))
         .route("/graph/sessions", get(routes::graph::session_graph))

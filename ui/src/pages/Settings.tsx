@@ -143,24 +143,39 @@ export default function Settings() {
       <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
         <div className="flex items-center gap-2">
           <h3 className="font-medium">Arweave Storage</h3>
-          <Tooltip content="Arweave provides permanent, decentralized storage. Your data is stored once and persists forever. Without a wallet, memories are stored locally only." />
+          <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.dev includes Turbo credits for uploads. Without an API key, memories are stored locally only." />
         </div>
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Wallet Path</label>
+          <label className="block text-xs text-zinc-500 mb-1">API Key</label>
           <input
-            type="text"
-            value={settings.arweave.wallet_path || ""}
+            type="password"
+            value={settings.arweave.api_key || ""}
             onChange={(e) =>
               setSettings({
                 ...settings,
-                arweave: { ...settings.arweave, wallet_path: e.target.value || null },
+                arweave: { ...settings.arweave, api_key: e.target.value || null },
               })
             }
-            placeholder="~/.memoryport/wallet.json (optional)"
+            placeholder="uc_... (from memoryport.dev/dashboard)"
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-zinc-500"
           />
-          <p className="text-xs text-zinc-600 mt-1">Without a wallet, memories are stored locally only</p>
+          <p className="text-xs text-zinc-600 mt-1">
+            Get a key at{" "}
+            <a href="https://memoryport.dev/dashboard" target="_blank" rel="noopener" className="text-zinc-400 hover:text-zinc-300 underline">
+              memoryport.dev
+            </a>
+            {" "}— or set UC_API_KEY env var
+          </p>
         </div>
+        {settings.arweave.address && (
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Arweave Address</label>
+            <div className="px-3 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-md text-sm text-zinc-400 font-mono truncate">
+              {settings.arweave.address}
+            </div>
+            <p className="text-xs text-zinc-600 mt-1">Auto-generated signing key for Arweave uploads</p>
+          </div>
+        )}
       </section>
 
       {/* Encryption */}

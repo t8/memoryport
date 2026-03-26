@@ -96,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         user_db,
         rate_limiter,
         server_config: server_config.clone(),
+        config_path: std::path::PathBuf::from(&cli.config),
     });
 
     let app = app::build_router(state, metrics_handle);

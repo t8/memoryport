@@ -488,6 +488,11 @@ impl Engine {
         Ok(destroyed)
     }
 
+    /// Get the Arweave wallet address, if configured.
+    pub fn arweave_address(&self) -> Option<String> {
+        self.arweave.address().map(|s| s.to_string())
+    }
+
     /// Return engine status.
     pub async fn status(&self) -> Result<EngineStatus, EngineError> {
         let pending = self.batcher.pending_count().await;

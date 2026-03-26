@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 uc-core = { workspace = true }
+uc-arweave = { workspace = true }
 
 tokio = { workspace = true }
 serde = { workspace = true }
