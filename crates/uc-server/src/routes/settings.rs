@@ -183,6 +183,15 @@ pub async fn update_settings(
     })))
 }
 
+pub async fn restart_server() -> Result<Json<serde_json::Value>, ApiError> {
+    tracing::info!("restart requested via API");
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        std::process::exit(0);
+    });
+    Ok(Json(serde_json::json!({ "status": "restarting" })))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SettingsUpdate {
     pub embeddings: Option<EmbeddingsSettings>,

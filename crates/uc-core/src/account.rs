@@ -24,7 +24,8 @@ pub struct ValidationResponse {
     pub tier: String,
     pub storage_used_bytes: u64,
     pub storage_limit_bytes: u64,
-    pub funder_address: String,
+    #[serde(default)]
+    pub funder_address: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +108,7 @@ impl AccountClient {
     pub async fn is_upload_allowed(
         &self,
         wallet_address: &str,
-    ) -> Result<(bool, String), AccountError> {
+    ) -> Result<(bool, Option<String>), AccountError> {
         // Check cache first
         {
             let cache = self.cached.read().await;

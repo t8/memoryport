@@ -215,6 +215,10 @@ export async function updateSettings(settings: SettingsData): Promise<void> {
   await httpPost("/v1/settings", settings);
 }
 
+export async function restartServer(): Promise<void> {
+  await httpPost("/v1/restart", {});
+}
+
 export function isTauri(): boolean {
   return IS_TAURI;
 }

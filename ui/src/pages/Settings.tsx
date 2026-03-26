@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { getSettings, updateSettings, type SettingsData } from "../lib/api";
+import { getSettings, updateSettings, restartServer, type SettingsData } from "../lib/api";
 import Toggle from "../components/Toggle";
 import Tooltip from "../components/Tooltip";
-import { Save, Check } from "lucide-react";
+import { Save, Check, RotateCw } from "lucide-react";
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,35 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleRestart() {
+    setRestarting(true);
+    try {
+      await restartServer();
+    } catch {
+      // Expected — server exits before responding
+    }
+    // Poll health until it comes back
+    const poll = async () => {
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          const res = await fetch("/health");
+          if (res.ok) {
+            setRestarting(false);
+            // Reload settings
+            getSettings().then(setSettings);
+            return;
+          }
+        } catch {
+          // Still down
+        }
+      }
+      setRestarting(false);
+      setError("Server did not come back after restart");
+    };
+    poll();
   }
 
   if (error) {
@@ -49,14 +79,24 @@ export default function Settings() {
             Configure your Memoryport instance
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-md text-sm font-medium transition-colors"
-        >
-          {saved ? <Check size={16} /> : <Save size={16} />}
-          {saved ? "Saved" : "Save Changes"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRestart}
+            disabled={restarting}
+            className="flex items-center gap-2 px-4 py-2 border border-zinc-700 hover:bg-zinc-800 disabled:opacity-50 rounded-md text-sm font-medium transition-colors text-zinc-300"
+          >
+            <RotateCw size={16} className={restarting ? "animate-spin" : ""} />
+            {restarting ? "Restarting..." : "Restart Server"}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-md text-sm font-medium transition-colors"
+          >
+            {saved ? <Check size={16} /> : <Save size={16} />}
+            {saved ? "Saved" : "Save Changes"}
+          </button>
+        </div>
       </div>
 
       {/* Embeddings */}

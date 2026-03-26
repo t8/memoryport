@@ -99,8 +99,8 @@ impl Writer {
 
             match account.is_upload_allowed(&wallet_address).await {
                 Ok((true, funder_address)) => {
-                    debug!(funder = %funder_address, "upload authorized via API key");
-                    Some(funder_address)
+                    debug!(funder = ?funder_address, "upload authorized via API key");
+                    funder_address
                 }
                 Ok((false, _)) => {
                     warn!("upload not authorized (not pro tier), falling back to local-only");
