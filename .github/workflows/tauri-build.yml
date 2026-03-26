@@ -96,6 +96,10 @@ jobs:
           cp target/${{ matrix.target }}/release/uc-mcp.exe crates/uc-tauri/src-tauri/binaries/uc-mcp-${{ matrix.binary_suffix }}
           cp target/${{ matrix.target }}/release/uc-server.exe crates/uc-tauri/src-tauri/binaries/uc-server-${{ matrix.binary_suffix }}
 
+      - name: Build UI
+        working-directory: ui
+        run: pnpm build
+
       - name: Build Tauri app
         working-directory: crates/uc-tauri/src-tauri
         run: cargo tauri build --target ${{ matrix.target }}
