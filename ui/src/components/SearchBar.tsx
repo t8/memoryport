@@ -14,7 +14,7 @@ export default function SearchBar({ onResults }: SearchBarProps) {
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const { results } = await retrieve(query, 10);
+      const { results } = await retrieve(query, 50);
       onResults?.(results, query.trim());
     } catch (err) {
       console.error("Search failed:", err);

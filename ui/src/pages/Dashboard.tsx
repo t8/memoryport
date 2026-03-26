@@ -1,29 +1,25 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getStatus,
   listSessions,
-  getSession,
   type Status,
   type SessionInfo,
-  type SessionChunk,
   type SearchResult,
 } from "../lib/api";
 import StatusCard from "../components/StatusCard";
 import SessionList from "../components/SessionList";
 import SearchBar from "../components/SearchBar";
 import Highlight from "../components/Highlight";
-import { ArrowLeft, MessageSquare, Bot, User } from "lucide-react";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<Status | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(
     null
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSession, setSelectedSession] = useState<string | null>(null);
-  const [sessionChunks, setSessionChunks] = useState<SessionChunk[]>([]);
-  const [loadingSession, setLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,31 +36,8 @@ export default function Dashboard() {
     }
   }
 
-  async function openSession(sessionId: string) {
-    setLoadingSession(true);
-    setSelectedSession(sessionId);
-    try {
-      const data = await getSession(sessionId);
-      // Sort: oldest first, and user before assistant at same timestamp
-      const sorted = [...data.chunks].sort((a, b) => {
-        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-        // Same timestamp: user before assistant
-        const roleOrder = (r: string | null) =>
-          r === "user" ? 0 : r === "assistant" ? 1 : 2;
-        return roleOrder(a.role) - roleOrder(b.role);
-      });
-      setSessionChunks(sorted);
-    } catch (err) {
-      console.error("Failed to load session:", err);
-      setSessionChunks([]);
-    } finally {
-      setLoadingSession(false);
-    }
-  }
-
-  function closeSession() {
-    setSelectedSession(null);
-    setSessionChunks([]);
+  function openSession(sessionId: string) {
+    navigate(`/session/${encodeURIComponent(sessionId)}`);
   }
 
   if (error) {
@@ -83,85 +56,6 @@ export default function Dashboard() {
             Retry
           </button>
         </div>
-      </div>
-    );
-  }
-
-  // Session detail view
-  if (selectedSession) {
-    return (
-      <div className="p-8 max-w-4xl">
-        <button
-          onClick={closeSession}
-          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors mb-6"
-        >
-          <ArrowLeft size={14} />
-          Back to Dashboard
-        </button>
-
-        <div className="flex items-center gap-2 mb-1">
-          <MessageSquare size={18} className="text-zinc-500" />
-          <h2 className="text-xl font-bold tracking-tight">
-            Session: {selectedSession}
-          </h2>
-        </div>
-        <p className="text-zinc-500 text-sm mb-6">
-          {sessionChunks.length} chunks
-        </p>
-
-        {loadingSession ? (
-          <div className="flex items-center gap-2 text-zinc-500 py-8">
-            <div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
-            Loading session...
-          </div>
-        ) : sessionChunks.length === 0 ? (
-          <p className="text-zinc-500 text-sm py-8">
-            No chunks found in this session.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {sessionChunks.map((chunk, i) => (
-              <div
-                key={chunk.chunk_id || i}
-                className={`rounded-lg border p-4 ${
-                  chunk.role === "assistant"
-                    ? "border-zinc-700/50 bg-zinc-900/30"
-                    : "border-zinc-800 bg-zinc-900/60"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  {chunk.role === "assistant" ? (
-                    <Bot size={14} className="text-blue-400" />
-                  ) : (
-                    <User size={14} className="text-emerald-400" />
-                  )}
-                  <span
-                    className={`text-xs font-medium ${
-                      chunk.role === "assistant"
-                        ? "text-blue-400"
-                        : "text-emerald-400"
-                    }`}
-                  >
-                    {chunk.role === "assistant" && chunk.source_model
-                      ? chunk.source_model
-                      : chunk.role || "unknown"}
-                  </span>
-                  {chunk.source_integration && (
-                    <span className="text-xs text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
-                      {chunk.source_integration}
-                    </span>
-                  )}
-                  <span className="text-xs text-zinc-600">
-                    {new Date(chunk.timestamp).toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
-                  {chunk.content}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   }
