@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tauri::State;
 
-use crate::{AppConfigPath, AppEngine, AppRuntime};
+use crate::services::ServiceHealthResponse;
+use crate::{get_engine, AppConfigPath, AppEngine, AppRuntime, AppServices};
+
+// ── Response types ──
 
 #[derive(Serialize)]
 pub struct StatusResponse {
@@ -43,14 +47,14 @@ pub struct SearchResult {
     arweave_tx_id: String,
 }
 
-// ── Existing commands ──
+// ── Data commands ──
 
 #[tauri::command]
 pub async fn get_status(
     engine: State<'_, AppEngine>,
     rt: State<'_, AppRuntime>,
 ) -> Result<StatusResponse, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let s = engine.status().await.map_err(|e| e.to_string())?;
         Ok(StatusResponse {
@@ -70,9 +74,12 @@ pub async fn list_sessions(
     engine: State<'_, AppEngine>,
     rt: State<'_, AppRuntime>,
 ) -> Result<Vec<SessionInfo>, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
-        let sessions = engine.list_sessions("default").await.map_err(|e| e.to_string())?;
+        let sessions = engine
+            .list_sessions("default")
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(sessions
             .into_iter()
             .map(|s| SessionInfo {
@@ -93,7 +100,7 @@ pub async fn get_session(
     rt: State<'_, AppRuntime>,
     session_id: String,
 ) -> Result<Vec<SessionChunk>, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let chunks = engine
             .get_session("default", &session_id)
@@ -122,7 +129,7 @@ pub async fn retrieve(
     query: String,
     top_k: Option<usize>,
 ) -> Result<Vec<SearchResult>, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     let top_k = top_k.unwrap_or(50);
     rt.0.spawn(async move {
         let results = engine
@@ -155,7 +162,7 @@ pub async fn store_text(
     text: String,
     session_id: Option<String>,
 ) -> Result<usize, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let params = uc_core::models::StoreParams {
             user_id: "default".into(),
@@ -165,7 +172,10 @@ pub async fn store_text(
             source_integration: Some("desktop".into()),
             source_model: None,
         };
-        let ids = engine.store(&text, params).await.map_err(|e| e.to_string())?;
+        let ids = engine
+            .store(&text, params)
+            .await
+            .map_err(|e| e.to_string())?;
         let _ = engine.flush().await;
         Ok(ids.len())
     })
@@ -204,7 +214,7 @@ pub async fn get_graph(
     engine: State<'_, AppEngine>,
     rt: State<'_, AppRuntime>,
 ) -> Result<GraphData, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let graph = engine.graph("default").await.map_err(|e| e.to_string())?;
         Ok(GraphData {
@@ -266,9 +276,12 @@ pub async fn get_analytics(
     engine: State<'_, AppEngine>,
     rt: State<'_, AppRuntime>,
 ) -> Result<AnalyticsData, String> {
-    let engine = engine.0.clone();
+    let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
-        let a = engine.analytics("default").await.map_err(|e| e.to_string())?;
+        let a = engine
+            .analytics("default")
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(AnalyticsData {
             activity: a
                 .activity
@@ -317,21 +330,16 @@ pub struct ToggleResponse {
 
 #[tauri::command]
 pub async fn get_integrations() -> Result<IntegrationsStatus, String> {
-    // Check actual integration status from config files
-    let claude_json = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".claude.json");
-    let mcp_registered = claude_json.exists() && {
-        std::fs::read_to_string(&claude_json)
+    let claude_json = dirs::home_dir().unwrap_or_default().join(".claude.json");
+    let mcp_registered = claude_json.exists()
+        && std::fs::read_to_string(&claude_json)
             .map(|c| c.contains("memoryport") || c.contains("uc-mcp"))
-            .unwrap_or(false)
-    };
+            .unwrap_or(false);
 
-    let proxy_configured = claude_json.exists() && {
-        std::fs::read_to_string(&claude_json)
+    let proxy_configured = claude_json.exists()
+        && std::fs::read_to_string(&claude_json)
             .map(|c| c.contains("ANTHROPIC_BASE_URL"))
-            .unwrap_or(false)
-    };
+            .unwrap_or(false);
 
     let wallet_exists = dirs::home_dir()
         .unwrap_or_default()
@@ -341,11 +349,19 @@ pub async fn get_integrations() -> Result<IntegrationsStatus, String> {
     Ok(IntegrationsStatus {
         mcp: IntegrationEntry {
             enabled: mcp_registered,
-            status: if mcp_registered { "registered".into() } else { "not registered".into() },
+            status: if mcp_registered {
+                "registered".into()
+            } else {
+                "not registered".into()
+            },
         },
         proxy: IntegrationEntry {
             enabled: proxy_configured,
-            status: if proxy_configured { "configured".into() } else { "not configured".into() },
+            status: if proxy_configured {
+                "configured".into()
+            } else {
+                "not configured".into()
+            },
         },
         ollama: IntegrationEntry {
             enabled: false,
@@ -353,7 +369,11 @@ pub async fn get_integrations() -> Result<IntegrationsStatus, String> {
         },
         arweave: IntegrationEntry {
             enabled: wallet_exists,
-            status: if wallet_exists { "wallet found".into() } else { "no wallet".into() },
+            status: if wallet_exists {
+                "wallet found".into()
+            } else {
+                "no wallet".into()
+            },
         },
     })
 }
@@ -363,8 +383,6 @@ pub async fn toggle_integration(
     integration: String,
     enabled: bool,
 ) -> Result<ToggleResponse, String> {
-    // For desktop app, toggling integrations modifies local config files
-    // This is a simplified version — the full server version writes to .claude.json etc.
     Ok(ToggleResponse {
         success: true,
         message: format!(
@@ -430,7 +448,6 @@ pub async fn get_settings(
 
     let has_api_key = config.resolved_api_key().is_some();
 
-    // Resolve wallet address
     let address = config
         .resolved_wallet_path()
         .or_else(|| {
@@ -449,7 +466,11 @@ pub async fn get_settings(
             provider: config.embeddings.provider.clone(),
             model: config.embeddings.model.clone(),
             dimensions: config.embeddings.dimensions,
-            api_key: config.embeddings.api_key.as_ref().map(|_| "••••••••".into()),
+            api_key: config
+                .embeddings
+                .api_key
+                .as_ref()
+                .map(|_| "••••••••".into()),
             api_base: config.embeddings.api_base.clone(),
         },
         retrieval: RetrievalSettings {
@@ -463,7 +484,11 @@ pub async fn get_settings(
         arweave: ArweaveSettings {
             gateway: config.arweave.gateway.clone(),
             wallet_path: config.arweave.wallet_path.clone(),
-            api_key: if has_api_key { Some("••••••••".into()) } else { None },
+            api_key: if has_api_key {
+                Some("••••••••".into())
+            } else {
+                None
+            },
             api_endpoint: config.arweave.api_endpoint.clone(),
             address,
         },
@@ -471,12 +496,6 @@ pub async fn get_settings(
             enabled: config.encryption.enabled,
         },
     })
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-pub struct SettingsUpdatePayload {
-    settings: serde_json::Value,
 }
 
 #[tauri::command]
@@ -496,7 +515,6 @@ pub async fn update_settings(
 
     let table = config.as_table_mut().ok_or("invalid config")?;
 
-    // Update arweave api_key
     if let Some(arweave) = settings.get("arweave") {
         if let Some(key) = arweave.get("api_key").and_then(|v| v.as_str()) {
             if key != "••••••••" && !key.is_empty() {
@@ -516,7 +534,6 @@ pub async fn update_settings(
         }
     }
 
-    // Update proxy agentic
     if let Some(proxy) = settings.get("proxy") {
         if let Some(enabled) = proxy.get("agentic_enabled").and_then(|v| v.as_bool()) {
             let section = table
@@ -533,7 +550,6 @@ pub async fn update_settings(
         }
     }
 
-    // Update embeddings
     if let Some(emb) = settings.get("embeddings") {
         let section = table
             .entry("embeddings")
@@ -556,7 +572,6 @@ pub async fn update_settings(
         }
     }
 
-    // Update retrieval
     if let Some(ret) = settings.get("retrieval") {
         let section = table
             .entry("retrieval")
@@ -568,7 +583,6 @@ pub async fn update_settings(
         }
     }
 
-    // Update encryption
     if let Some(enc) = settings.get("encryption") {
         let section = table
             .entry("encryption")
@@ -582,6 +596,301 @@ pub async fn update_settings(
 
     let toml_str = toml::to_string_pretty(&config).map_err(|e| e.to_string())?;
     std::fs::write(path, &toml_str).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+// ── Setup + lifecycle commands ──
+
+#[tauri::command]
+pub async fn check_config_exists(
+    config_path: State<'_, AppConfigPath>,
+) -> Result<bool, String> {
+    Ok(config_path.0.exists())
+}
+
+#[derive(Deserialize)]
+pub struct SetupConfig {
+    pub provider: String,        // "openai" or "ollama"
+    pub model: String,           // e.g. "text-embedding-3-small"
+    pub dimensions: usize,       // e.g. 1536
+    pub api_key: Option<String>, // OpenAI API key
+    pub uc_api_key: Option<String>, // Memoryport Pro key
+}
+
+#[tauri::command]
+pub async fn write_initial_config(
+    config_path: State<'_, AppConfigPath>,
+    config: SetupConfig,
+) -> Result<(), String> {
+    let uc_dir = config_path.0.parent().unwrap_or(std::path::Path::new("."));
+    std::fs::create_dir_all(uc_dir.join("index")).map_err(|e| e.to_string())?;
+
+    let mut toml_content = format!(
+        "[arweave]\ngateway = \"https://arweave.net\"\nturbo_endpoint = \"https://upload.ardrive.io\"\n"
+    );
+
+    if let Some(ref key) = config.uc_api_key {
+        toml_content.push_str(&format!("api_key = \"{key}\"\n"));
+        toml_content.push_str(&format!(
+            "wallet_path = \"{}/wallet.json\"\n",
+            uc_dir.display()
+        ));
+    }
+
+    toml_content.push_str(&format!(
+        "\n[index]\npath = \"{}/index\"\nembedding_dimensions = {}\n",
+        uc_dir.display(),
+        config.dimensions
+    ));
+
+    toml_content.push_str(&format!(
+        "\n[embeddings]\nprovider = \"{}\"\nmodel = \"{}\"\ndimensions = {}\n",
+        config.provider, config.model, config.dimensions
+    ));
+
+    if let Some(ref key) = config.api_key {
+        toml_content.push_str(&format!("api_key = \"{key}\"\n"));
+    }
+
+    toml_content.push_str(
+        "\n[retrieval]\ngating_enabled = true\nmax_context_tokens = 50000\nrecency_window = 20\nsimilarity_top_k = 50\n"
+    );
+
+    toml_content.push_str("\n[proxy]\nlisten = \"127.0.0.1:9191\"\n");
+
+    std::fs::write(&config_path.0, &toml_content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn init_engine(
+    engine_state: State<'_, AppEngine>,
+    config_path: State<'_, AppConfigPath>,
+    rt: State<'_, AppRuntime>,
+) -> Result<(), String> {
+    let path = config_path.0.clone();
+    let new_engine = rt
+        .0
+        .spawn(async move {
+            let config =
+                uc_core::config::Config::from_file(&path).map_err(|e| e.to_string())?;
+            uc_core::Engine::new(config)
+                .await
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+    let mut guard = engine_state.0.write().await;
+    *guard = Some(Arc::new(new_engine));
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_service_health(
+    services: State<'_, AppServices>,
+) -> Result<ServiceHealthResponse, String> {
+    let guard = services.0.read().await;
+    match &*guard {
+        Some(svc) => Ok(svc.health().await),
+        None => Err("Service manager not initialized".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn start_services(
+    services: State<'_, AppServices>,
+) -> Result<(), String> {
+    let guard = services.0.read().await;
+    if let Some(ref svc) = *guard {
+        svc.start_all().await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_services(
+    services: State<'_, AppServices>,
+) -> Result<(), String> {
+    let guard = services.0.read().await;
+    if let Some(ref svc) = *guard {
+        svc.stop_all().await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn restart_service(
+    services: State<'_, AppServices>,
+    _service: String,
+) -> Result<(), String> {
+    // For now, restart all — individual service restart comes with sidecar support
+    let guard = services.0.read().await;
+    if let Some(ref svc) = *guard {
+        svc.stop_all().await;
+        svc.start_all().await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_ollama_installed() -> Result<bool, String> {
+    Ok(which::which("ollama").is_ok())
+}
+
+#[tauri::command]
+pub async fn install_ollama() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, open the download page
+        Ok("open:https://ollama.com/download".into())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On macOS/Linux, run the installer
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg("curl -fsSL https://ollama.com/install.sh | sh")
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if output.status.success() {
+            Ok("installed".into())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Install failed: {stderr}"))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn pull_ollama_model(model: String) -> Result<(), String> {
+    let output = tokio::process::Command::new("ollama")
+        .args(["pull", &model])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Pull failed: {stderr}"))
+    }
+}
+
+#[tauri::command]
+pub async fn register_mcp() -> Result<(), String> {
+    let claude_json = dirs::home_dir()
+        .ok_or("no home dir")?
+        .join(".claude.json");
+
+    let mut data: serde_json::Value = if claude_json.exists() {
+        let content = std::fs::read_to_string(&claude_json).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // Find uc-mcp binary
+    let mcp_path = which::which("uc-mcp")
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| {
+            dirs::home_dir()
+                .unwrap_or_default()
+                .join(".memoryport/bin/uc-mcp")
+                .to_string_lossy()
+                .to_string()
+        });
+
+    let config_path = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".memoryport/uc.toml")
+        .to_string_lossy()
+        .to_string();
+
+    let mcp_entry = serde_json::json!({
+        "command": mcp_path,
+        "args": ["--config", config_path],
+        "type": "stdio"
+    });
+
+    data.as_object_mut()
+        .unwrap()
+        .entry("mcpServers")
+        .or_insert(serde_json::json!({}))
+        .as_object_mut()
+        .unwrap()
+        .insert("memoryport".into(), mcp_entry);
+
+    let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+    std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;
+
+    // Also register in Cursor
+    let cursor_json = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".cursor/mcp.json");
+    if let Some(parent) = cursor_json.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let mut cursor_data: serde_json::Value = if cursor_json.exists() {
+        let content = std::fs::read_to_string(&cursor_json).unwrap_or("{}".into());
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let mcp_entry = serde_json::json!({
+        "command": mcp_path,
+        "args": ["--config", config_path],
+        "type": "stdio"
+    });
+
+    cursor_data
+        .as_object_mut()
+        .unwrap()
+        .entry("mcpServers")
+        .or_insert(serde_json::json!({}))
+        .as_object_mut()
+        .unwrap()
+        .insert("memoryport".into(), mcp_entry);
+
+    let content = serde_json::to_string_pretty(&cursor_data).map_err(|e| e.to_string())?;
+    std::fs::write(&cursor_json, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn register_proxy() -> Result<(), String> {
+    let claude_json = dirs::home_dir()
+        .ok_or("no home dir")?
+        .join(".claude.json");
+
+    let mut data: serde_json::Value = if claude_json.exists() {
+        let content = std::fs::read_to_string(&claude_json).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    data.as_object_mut()
+        .unwrap()
+        .entry("env")
+        .or_insert(serde_json::json!({}))
+        .as_object_mut()
+        .unwrap()
+        .insert(
+            "ANTHROPIC_BASE_URL".into(),
+            serde_json::json!("http://127.0.0.1:9191"),
+        );
+
+    let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+    std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;
 
     Ok(())
 }
