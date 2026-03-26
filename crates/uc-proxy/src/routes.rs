@@ -15,34 +15,55 @@ pub struct ProxyState {
 }
 
 /// Manages session IDs per source. Creates a new session after 30 minutes of inactivity.
+/// Persists to disk so sessions survive proxy restarts.
 pub struct SessionManager {
     active: Mutex<HashMap<String, ActiveSession>>,
     inactivity_timeout_secs: u64,
+    state_file: std::path::PathBuf,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct ActiveSession {
     session_id: String,
-    last_activity: std::time::Instant,
+    last_activity_epoch: u64, // unix seconds (Instant doesn't serialize)
 }
 
 impl SessionManager {
     pub fn new(inactivity_timeout_secs: u64) -> Self {
+        let state_file = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".memoryport")
+            .join("proxy-sessions.json");
+
+        // Load persisted state
+        let active = if let Ok(data) = std::fs::read_to_string(&state_file) {
+            serde_json::from_str(&data).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
         Self {
-            active: Mutex::new(HashMap::new()),
+            active: Mutex::new(active),
             inactivity_timeout_secs,
+            state_file,
         }
     }
 
-    /// Get or create a session ID for a given source (e.g., "anthropic", "openai", "ollama").
+    /// Get or create a session ID for a given source.
     /// Rotates to a new session after inactivity timeout.
     pub async fn get_session(&self, source: &str) -> String {
         let mut sessions = self.active.lock().await;
-        let now = std::time::Instant::now();
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
         if let Some(active) = sessions.get_mut(source) {
-            if now.duration_since(active.last_activity).as_secs() < self.inactivity_timeout_secs {
-                active.last_activity = now;
-                return active.session_id.clone();
+            if now_epoch - active.last_activity_epoch < self.inactivity_timeout_secs {
+                active.last_activity_epoch = now_epoch;
+                let sid = active.session_id.clone();
+                self.persist(&sessions);
+                return sid;
             }
         }
 
@@ -56,10 +77,17 @@ impl SessionManager {
             source.to_string(),
             ActiveSession {
                 session_id: session_id.clone(),
-                last_activity: now,
+                last_activity_epoch: now_epoch,
             },
         );
+        self.persist(&sessions);
         session_id
+    }
+
+    fn persist(&self, sessions: &HashMap<String, ActiveSession>) {
+        if let Ok(json) = serde_json::to_string(sessions) {
+            let _ = std::fs::write(&self.state_file, json);
+        }
     }
 }
 

@@ -23,9 +23,14 @@ export default function SessionList({ sessions, onSelect }: SessionListProps) {
     );
   }
 
+  // Sort: most recent session first
+  const sorted = [...sessions].sort(
+    (a, b) => b.last_timestamp - a.last_timestamp
+  );
+
   return (
     <div className="space-y-1">
-      {sessions.map((s) => (
+      {sorted.map((s) => (
         <button
           key={s.session_id}
           onClick={() => onSelect?.(s.session_id)}
