@@ -1,0 +1,47 @@
+[
+  {
+    "token_count": 750,
+    "chunk_count": 2,
+    "query_latency_p50_ms": 53.20441722869873,
+    "query_latency_p95_ms": 58.784162998199456,
+    "query_latency_p99_ms": 128.2501745224,
+    "query_latency_mean_ms": 56.402881940205894,
+    "index_size_mb": 3.5247974395751953
+  },
+  {
+    "token_count": 9750,
+    "chunk_count": 26,
+    "query_latency_p50_ms": 53.0780553817749,
+    "query_latency_p95_ms": 58.178913593292236,
+    "query_latency_p99_ms": 113.73184680938726,
+    "query_latency_mean_ms": 55.75993855794271,
+    "index_size_mb": 3.656399726867676
+  },
+  {
+    "token_count": 99750,
+    "chunk_count": 266,
+    "query_latency_p50_ms": 52.38199234008789,
+    "query_latency_p95_ms": 58.61485004425048,
+    "query_latency_p99_ms": 91.3808345794678,
+    "query_latency_mean_ms": 54.10006046295166,
+    "index_size_mb": 4.887755393981934
+  },
+  {
+    "token_count": 999750,
+    "chunk_count": 2666,
+    "query_latency_p50_ms": 56.08558654785156,
+    "query_latency_p95_ms": 64.01780843734741,
+    "query_latency_p99_ms": 115.58524370193487,
+    "query_latency_mean_ms": 58.68065357208252,
+    "index_size_mb": 17.276893615722656
+  },
+  {
+    "token_count": 9999750,
+    "chunk_count": 26666,
+    "query_latency_p50_ms": 123.7645149230957,
+    "query_latency_p95_ms": 162.40980625152582,
+    "query_latency_p99_ms": 213.06484937667852,
+    "query_latency_mean_ms": 131.09203179677328,
+    "index_size_mb": 152.90741729736328
+  }
+]

@@ -103,6 +103,25 @@ impl Index {
             .execute()
             .await;
 
+        // Create IVF-PQ vector index for fast ANN search at scale.
+        // Only effective when the table has enough rows; LanceDB handles this gracefully.
+        let row_count = table.count_rows(None).await.unwrap_or(0);
+        if row_count >= 10_000 {
+            let num_partitions = ((row_count as f64).sqrt() as u32).max(16).min(1024);
+            let _ = table
+                .create_index(
+                    &["vector"],
+                    lancedb::index::Index::IvfPq(
+                        lancedb::index::vector::IvfPqIndexBuilder::default()
+                            .num_partitions(num_partitions)
+                            .num_sub_vectors((dimensions / 16) as u32)
+                    ),
+                )
+                .execute()
+                .await;
+            debug!(partitions = num_partitions, rows = row_count, "IVF-PQ vector index created/updated");
+        }
+
         debug!(path = %db_path_str, dimensions, "opened LanceDB index");
 
         Ok(Self {
@@ -156,6 +175,7 @@ impl Index {
         let results: Vec<RecordBatch> = self.table
             .query()
             .nearest_to(query_vector)?
+            .nprobes(20) // IVF-PQ: search 20 partitions (balance recall vs speed)
             .only_if(filter)
             .limit(params.top_k)
             .execute()

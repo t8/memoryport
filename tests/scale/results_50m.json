@@ -1,0 +1,65 @@
+[
+  {
+    "token_count": 750,
+    "chunk_count": 2,
+    "query_latency_p50_ms": 203.84812355041504,
+    "query_latency_p95_ms": 227.7449369430542,
+    "query_latency_p99_ms": 268.6767435073853,
+    "query_latency_mean_ms": 208.63937536875406,
+    "index_size_mb": 325.495418548584
+  },
+  {
+    "token_count": 9750,
+    "chunk_count": 26,
+    "query_latency_p50_ms": 211.22443675994873,
+    "query_latency_p95_ms": 271.38170003890986,
+    "query_latency_p99_ms": 333.51713657379156,
+    "query_latency_mean_ms": 219.78413263956705,
+    "index_size_mb": 325.7128686904907
+  },
+  {
+    "token_count": 99750,
+    "chunk_count": 266,
+    "query_latency_p50_ms": 208.1608772277832,
+    "query_latency_p95_ms": 253.51500511169428,
+    "query_latency_p99_ms": 266.92328214645386,
+    "query_latency_mean_ms": 216.41486485799155,
+    "index_size_mb": 327.37431716918945
+  },
+  {
+    "token_count": 999750,
+    "chunk_count": 2666,
+    "query_latency_p50_ms": 214.56003189086914,
+    "query_latency_p95_ms": 242.42913722991938,
+    "query_latency_p99_ms": 281.44475698471075,
+    "query_latency_mean_ms": 219.45978800455728,
+    "index_size_mb": 343.87896728515625
+  },
+  {
+    "token_count": 4999875,
+    "chunk_count": 13333,
+    "query_latency_p50_ms": 245.12791633605957,
+    "query_latency_p95_ms": 277.5007963180542,
+    "query_latency_p99_ms": 282.30666160583496,
+    "query_latency_mean_ms": 250.17664432525635,
+    "index_size_mb": 419.5276107788086
+  },
+  {
+    "token_count": 9999750,
+    "chunk_count": 26666,
+    "query_latency_p50_ms": 291.2846803665161,
+    "query_latency_p95_ms": 443.44111680984486,
+    "query_latency_p99_ms": 470.9447503089905,
+    "query_latency_mean_ms": 317.2418753306071,
+    "index_size_mb": 519.1157188415527
+  },
+  {
+    "token_count": 49999875,
+    "chunk_count": 133333,
+    "query_latency_p50_ms": 708.5448503494263,
+    "query_latency_p95_ms": 805.4646492004392,
+    "query_latency_p99_ms": 833.800311088562,
+    "query_latency_mean_ms": 724.291173617045,
+    "index_size_mb": 1518.4203176498413
+  }
+]
