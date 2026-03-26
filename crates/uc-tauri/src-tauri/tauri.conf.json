@@ -28,6 +28,11 @@
     "targets": "all",
     "icon": [
       "icons/icon.png"
+    ],
+    "externalBin": [
+      "binaries/uc-proxy",
+      "binaries/uc-mcp",
+      "binaries/uc-server"
     ]
   }
 }
