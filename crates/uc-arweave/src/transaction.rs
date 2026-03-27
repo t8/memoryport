@@ -125,16 +125,9 @@ fn compute_deep_hash(
     let target_bytes = target.unwrap_or(&[]);
     let anchor_bytes = anchor.unwrap_or(&[]);
 
-    // Build the tags as a list of [name, value] pairs
-    let tag_pairs: Vec<DeepHashItem> = tags
-        .iter()
-        .map(|t| {
-            DeepHashItem::List(vec![
-                DeepHashItem::Blob(t.name.as_bytes().to_vec()),
-                DeepHashItem::Blob(t.value.as_bytes().to_vec()),
-            ])
-        })
-        .collect();
+    // The deep hash uses the raw avro-encoded tag bytes, not structured tags.
+    // This matches the arbundles reference implementation which passes rawTags.
+    let encoded_tags = encode_avro_tags(tags);
 
     let root = DeepHashItem::List(vec![
         DeepHashItem::Blob(b"dataitem".to_vec()),
@@ -143,7 +136,7 @@ fn compute_deep_hash(
         DeepHashItem::Blob(owner.to_vec()),
         DeepHashItem::Blob(target_bytes.to_vec()),
         DeepHashItem::Blob(anchor_bytes.to_vec()),
-        DeepHashItem::List(tag_pairs),
+        DeepHashItem::Blob(encoded_tags),
         DeepHashItem::Blob(data.to_vec()),
     ]);
 
