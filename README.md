@@ -321,6 +321,17 @@ python3 tests/latency/mock_upstream.py --port 8199 &
 python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://127.0.0.1:8199
 ```
 
+## Data Recovery
+
+If you lose your local data or set up on a new machine, Pro users can rebuild their memory from Arweave:
+
+1. Install Memoryport on the new machine
+2. Open Settings → Arweave Storage
+3. Enter your API key
+4. Click "Rebuild from Arweave"
+
+All encrypted batches are fetched from the permanent storage network and re-indexed locally. Your encryption key never leaves your machine — data is decrypted client-side during rebuild.
+
 ## License
 
 Apache-2.0

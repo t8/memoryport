@@ -23,6 +23,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/t8/memoryport/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
