@@ -197,6 +197,8 @@ export interface SettingsData {
     enabled: boolean;
     api_endpoint: string | null;
     address: string | null;
+    storage_used_bytes: number | null;
+    storage_limit_bytes: number | null;
   };
   proxy?: {
     agentic_enabled: boolean;
@@ -221,6 +223,11 @@ export async function updateSettings(settings: SettingsData): Promise<void> {
 
 export async function restartServer(): Promise<void> {
   await httpPost("/v1/restart", {});
+}
+
+export async function rebuildFromArweave(): Promise<{ chunks_restored: number }> {
+  if (IS_TAURI) return tauriInvoke("rebuild_from_arweave");
+  return httpPost("/v1/rebuild", {});
 }
 
 export function isTauri(): boolean {

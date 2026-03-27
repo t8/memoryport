@@ -433,6 +433,8 @@ pub struct ArweaveSettings {
     enabled: bool,
     api_endpoint: Option<String>,
     address: Option<String>,
+    storage_used_bytes: Option<u64>,
+    storage_limit_bytes: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -493,6 +495,8 @@ pub async fn get_settings(
             enabled: config.arweave.enabled,
             api_endpoint: config.arweave.api_endpoint.clone(),
             address,
+            storage_used_bytes: None, // Populated when engine has AccountClient cache
+            storage_limit_bytes: None,
         },
         encryption: EncryptionSettings {
             enabled: config.encryption.enabled,
@@ -940,4 +944,30 @@ pub async fn unregister_proxy() -> Result<(), String> {
     std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// ── Data recovery ──
+
+#[derive(Serialize)]
+pub struct RebuildResult {
+    pub chunks_restored: usize,
+}
+
+#[tauri::command]
+pub async fn rebuild_from_arweave(
+    engine: State<'_, AppEngine>,
+    rt: State<'_, AppRuntime>,
+) -> Result<RebuildResult, String> {
+    let engine = get_engine(&engine).await?;
+    rt.0.spawn(async move {
+        let progress = engine
+            .rebuild_index("default")
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(RebuildResult {
+            chunks_restored: progress.chunks_indexed,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

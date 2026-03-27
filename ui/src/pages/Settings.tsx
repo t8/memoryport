@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { getSettings, updateSettings, restartServer, type SettingsData } from "../lib/api";
+import { getSettings, updateSettings, restartServer, rebuildFromArweave, type SettingsData } from "../lib/api";
 import Toggle from "../components/Toggle";
 import Tooltip from "../components/Tooltip";
-import { Save, Check, RotateCw, ChevronDown } from "lucide-react";
+import { Save, Check, RotateCw, ChevronDown, HardDriveDownload, Loader2 } from "lucide-react";
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null);
@@ -10,6 +10,31 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState<{ chunks_restored: number } | null>(null);
+  const [rebuildError, setRebuildError] = useState<string | null>(null);
+
+  function formatBytes(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  async function handleRebuild() {
+    setRebuilding(true);
+    setRebuildResult(null);
+    setRebuildError(null);
+    try {
+      const result = await rebuildFromArweave();
+      setRebuildResult(result);
+    } catch (e: any) {
+      setRebuildError(e.message);
+    } finally {
+      setRebuilding(false);
+    }
+  }
 
   useEffect(() => {
     getSettings().then(setSettings).catch((e) => setError(e.message));
@@ -260,6 +285,32 @@ export default function Settings() {
               {" "}&ndash; or set UC_API_KEY env var
             </p>
           </div>
+          {settings.arweave.api_key && settings.arweave.storage_used_bytes != null && settings.arweave.storage_limit_bytes != null && (
+            <div>
+              <label className="block text-sm text-cream-muted mb-2">Storage Used</label>
+              <div className="h-8 w-full bg-surface border border-border overflow-hidden relative">
+                <div
+                  className="h-full bg-cream transition-all duration-300"
+                  style={{
+                    width: `${Math.min(100, (settings.arweave.storage_used_bytes / settings.arweave.storage_limit_bytes) * 100)}%`,
+                  }}
+                />
+                <span className="absolute inset-0 flex items-center justify-center text-xs font-mono text-bg mix-blend-difference">
+                  {formatBytes(settings.arweave.storage_used_bytes)} / {formatBytes(settings.arweave.storage_limit_bytes)}
+                </span>
+              </div>
+              <p className="text-sm text-cream-dim mt-2">
+                <a
+                  href="https://memoryport.ai/dashboard"
+                  target="_blank"
+                  rel="noopener"
+                  className="text-cream-muted hover:text-cream underline"
+                >
+                  Manage billing
+                </a>
+              </p>
+            </div>
+          )}
           {settings.arweave.address && (
             <div>
               <label className="block text-sm text-cream-muted mb-2">Arweave Address</label>
@@ -267,6 +318,51 @@ export default function Settings() {
                 {settings.arweave.address}
               </div>
               <p className="text-sm text-cream-dim mt-2">Auto-generated signing key for Arweave uploads</p>
+            </div>
+          )}
+          {settings.arweave.api_key && (
+            <div className="pt-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-base font-semibold text-cream">Rebuild from Arweave</p>
+                  <p className="text-sm text-cream-muted mt-1">
+                    Restore your memory from permanent storage on a new device
+                  </p>
+                </div>
+                <button
+                  onClick={handleRebuild}
+                  disabled={rebuilding}
+                  className="flex items-center gap-2 h-10 px-5 border border-border bg-bg hover:bg-surface disabled:opacity-50 text-sm font-medium transition-colors text-cream shrink-0 ml-4"
+                >
+                  {rebuilding ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <HardDriveDownload size={16} />
+                  )}
+                  {rebuilding ? "Rebuilding..." : "Rebuild"}
+                </button>
+              </div>
+              {rebuilding && (
+                <p className="text-sm text-cream-muted mt-3">
+                  Rebuilding... this may take several minutes
+                </p>
+              )}
+              {rebuildResult && (
+                <p className="text-sm text-accent mt-3">
+                  Rebuild complete &mdash; {rebuildResult.chunks_restored} chunks restored
+                </p>
+              )}
+              {rebuildError && (
+                <div className="mt-3 flex items-center gap-3">
+                  <p className="text-sm text-error">{rebuildError}</p>
+                  <button
+                    onClick={handleRebuild}
+                    className="text-sm text-cream-muted hover:text-cream underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>

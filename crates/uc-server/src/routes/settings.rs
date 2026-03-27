@@ -44,6 +44,8 @@ pub struct ArweaveSettings {
     pub enabled: bool,
     pub api_endpoint: Option<String>,
     pub address: Option<String>,
+    pub storage_used_bytes: Option<u64>,
+    pub storage_limit_bytes: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -101,6 +103,10 @@ pub async fn get_settings(
             enabled: config.arweave.enabled,
             api_endpoint: config.arweave.api_endpoint.clone(),
             address,
+            // Storage stats would come from AccountClient cache
+            // For now, return None — populated when engine has validated
+            storage_used_bytes: None,
+            storage_limit_bytes: None,
         },
         encryption: EncryptionSettings {
             enabled: config.encryption.enabled,

@@ -122,6 +122,7 @@ pub fn run() {
             commands::register_mcp,
             commands::register_proxy,
             commands::unregister_proxy,
+            commands::rebuild_from_arweave,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Memoryport");
