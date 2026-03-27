@@ -12,6 +12,22 @@ Memoryport gives LLMs persistent, queryable memory using [Arweave](https://arwea
 
 Works with **Claude Code**, **Cursor**, **Open WebUI**, **Ollama**, and any OpenAI-compatible tool.
 
+## Performance
+
+![Query Latency vs Context Space](tests/scale/performance_chart.png)
+
+**294ms query latency at 500M tokens** — brute force with 100% recall. No approximate indexing needed.
+
+| Context Space | Chunks | p50 Latency |
+|---|---|---|
+| 100K tokens | 266 | 1ms |
+| 1M tokens | 2,666 | 3ms |
+| 10M tokens | 26,666 | 9ms |
+| 100M tokens | 266,666 | 61ms |
+| 500M tokens | 1,333,333 | 294ms |
+
+Tested with `nomic-embed-text` (768d, local via Ollama). Compacted LanceDB, no cloud APIs required.
+
 ## Install
 
 ```bash
@@ -260,22 +276,6 @@ Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchma
 For context, GPT-4o with naive RAG scores 30-70% on this benchmark.
 
 Tested with `nomic-embed-text` (768d, local via Ollama). No cloud APIs required.
-
-### Scale Benchmark (70M tokens / 187K chunks)
-
-![Performance Chart](tests/scale/performance_chart.png)
-
-After compaction optimization (merging fragmented Lance files):
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| p50 latency | 1,962ms | **104ms** | **19x faster** |
-| p95 latency | 2,121ms | **112ms** | **19x faster** |
-| mean | 1,885ms | **104ms** | **18x faster** |
-
-Context space: 70M tokens (~187K chunks, 768d embeddings, nomic-embed-text). Brute-force search with 100% recall — no approximate indexing needed at this scale.
-
-Auto-compaction runs every 100 inserts and on startup to prevent fragment buildup.
 
 ### Stress Test (10K chunks)
 

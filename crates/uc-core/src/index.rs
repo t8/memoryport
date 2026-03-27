@@ -110,7 +110,7 @@ impl Index {
         if row_count > 0 {
             let bg_table = table.clone();
             tokio::spawn(async move {
-                match bg_table.optimize(lancedb::table::OptimizeAction::All).await {
+                match bg_table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await {
                     Ok(_) => tracing::info!("compaction complete"),
                     Err(e) => tracing::warn!(error = %e, "compaction failed (non-fatal)"),
                 }
@@ -151,7 +151,7 @@ impl Index {
         if count % 100 == 0 {
             let bg_table = self.table.clone();
             tokio::spawn(async move {
-                match bg_table.optimize(lancedb::table::OptimizeAction::All).await {
+                match bg_table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await {
                     Ok(_) => tracing::debug!("periodic compaction complete"),
                     Err(e) => tracing::warn!(error = %e, "periodic compaction failed"),
                 }
@@ -183,6 +183,7 @@ impl Index {
         let results: Vec<RecordBatch> = self.table
             .query()
             .nearest_to(query_vector)?
+            // Brute force is faster than IVF_FLAT at this scale with compacted data
             .only_if(filter)
             .limit(params.top_k)
             .select(lancedb::query::Select::columns(&[
@@ -346,7 +347,7 @@ impl Index {
     /// Compact fragmented data files. Merges small fragments into larger ones
     /// and prunes old versions, dramatically improving query performance.
     pub async fn optimize(&self) -> Result<(), IndexError> {
-        self.table.optimize(lancedb::table::OptimizeAction::All).await?;
+        self.table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await?;
         Ok(())
     }
 }

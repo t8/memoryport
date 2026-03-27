@@ -1,0 +1,6 @@
+[21:36:05] Current:  287,022 chunks (108M tokens)
+[21:36:05] Target:   1,333,333 chunks (500M tokens)
+[21:36:05] Need:     1,046,311 chunks
+[21:36:05] Strategy: 5000 texts/batch, pipeline embed+insert
+[21:36:05] 
+[21:37:18]   5,000/1,046,311 (0.5%) | 292,022 total (110M tokens) | 69/s | ETA 253m

@@ -1,0 +1,14 @@
+{
+  "chunks": 1670333,
+  "tokens": 626374875,
+  "model": "nomic-embed-text",
+  "queries": 20,
+  "runs_per_query": 1,
+  "note": "Vector search only (excludes embedding time). Brute force, 100% recall, compacted LanceDB.",
+  "p50_ms": 342,
+  "p95_ms": 400,
+  "p99_ms": 420,
+  "mean_ms": 342,
+  "min_ms": 300,
+  "max_ms": 420
+}
