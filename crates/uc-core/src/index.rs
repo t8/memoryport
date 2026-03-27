@@ -63,15 +63,8 @@ impl Index {
     /// Ensure we're reading the latest version of the table.
     /// Throttled to once per second to avoid excessive metadata reads at scale.
     async fn checkout_latest(&self) -> Result<(), IndexError> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let last = self.last_checkout.load(std::sync::atomic::Ordering::Relaxed);
-        if now > last {
-            self.table.checkout_latest().await?;
-            self.last_checkout.store(now, std::sync::atomic::Ordering::Relaxed);
-        }
+        // Always checkout — cross-process writes (proxy → server) require fresh snapshots
+        self.table.checkout_latest().await?;
         Ok(())
     }
 }
@@ -295,9 +288,12 @@ impl Index {
         let filter = format!("user_id = '{}'", sanitize_sql(user_id));
 
         self.checkout_latest().await?;
+        let row_count = self.table.count_rows(None).await.unwrap_or(10000) as usize;
         let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)
+            .select(lancedb::query::Select::columns(&["session_id", "timestamp"]))
+            .limit(row_count + 1000) // Ensure we get all rows (no implicit limit)
             .execute()
             .await?
             .try_collect()

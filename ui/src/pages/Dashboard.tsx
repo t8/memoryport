@@ -54,7 +54,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadData();
-    return () => stopAutoRetry();
+    // Auto-refresh every 15 seconds to pick up new sessions from the proxy
+    const refreshInterval = setInterval(loadData, 15000);
+    return () => {
+      stopAutoRetry();
+      clearInterval(refreshInterval);
+    };
   }, [loadData, stopAutoRetry]);
 
   // Start auto-retry when error is set
