@@ -8,7 +8,7 @@
    Destroyer of the context window
 ```
 
-Memoryport gives LLMs persistent, queryable memory using [Arweave](https://arweave.org) for permanent storage and [LanceDB](https://lancedb.com) for local vector search. Every conversation, document, and knowledge artifact is stored permanently and retrieved semantically — so your AI never forgets.
+Memoryport gives LLMs persistent, queryable memory using [Arweave](https://arweave.com) for permanent storage and [LanceDB](https://lancedb.com) for local vector search. Every conversation, document, and knowledge artifact is stored permanently and retrieved semantically — so your AI never forgets.
 
 Works with **Claude Code**, **Cursor**, **Open WebUI**, **Ollama**, and any OpenAI-compatible tool.
 
