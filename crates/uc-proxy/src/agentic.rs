@@ -774,13 +774,27 @@ pub async fn run_agentic_loop(
     }
 
     // If we somehow have no response (shouldn't happen), error out
-    let resp_json = final_response.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut resp_json = final_response.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Store user message + assistant response (same as non-agentic path)
     store_conversation(state, request, &resp_json, format, session_source).await;
 
-    // Strip our injected tools from the request (not needed for response, but clean up)
+    // Strip our injected tools from the request
     strip_injected_tools(request, format);
+
+    // Strip memoryport tool_use blocks from the response content
+    // so the client doesn't see calls for tools it doesn't know about
+    if let Some(content) = resp_json.get_mut("content").and_then(|c| c.as_array_mut()) {
+        content.retain(|block| {
+            let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            if block_type == "tool_use" {
+                let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                !name.starts_with(TOOL_PREFIX)
+            } else {
+                true
+            }
+        });
+    }
 
     // Build the response to return to the client
     let body_bytes = serde_json::to_vec(&resp_json).unwrap_or_default();
@@ -831,31 +845,70 @@ fn wrap_anthropic_sse(response: &Value) -> (axum::body::Bytes, &'static str) {
     });
     sse.push_str(&format!("event: message_start\ndata: {}\n\n", msg_start));
 
-    // Content blocks
+    // Content blocks — handle ALL block types (text, tool_use, thinking, etc.)
     if let Some(content) = response.get("content").and_then(|c| c.as_array()) {
         for (i, block) in content.iter().enumerate() {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+            let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("text");
 
-                // content_block_start
-                let start = serde_json::json!({
-                    "type": "content_block_start",
-                    "index": i,
-                    "content_block": {"type": "text", "text": ""}
-                });
-                sse.push_str(&format!("event: content_block_start\ndata: {}\n\n", start));
+            match block_type {
+                "text" => {
+                    let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
 
-                // content_block_delta (single delta with all text)
-                let delta = serde_json::json!({
-                    "type": "content_block_delta",
-                    "index": i,
-                    "delta": {"type": "text_delta", "text": text}
-                });
-                sse.push_str(&format!("event: content_block_delta\ndata: {}\n\n", delta));
+                    let start = serde_json::json!({
+                        "type": "content_block_start",
+                        "index": i,
+                        "content_block": {"type": "text", "text": ""}
+                    });
+                    sse.push_str(&format!("event: content_block_start\ndata: {}\n\n", start));
 
-                // content_block_stop
-                let stop = serde_json::json!({"type": "content_block_stop", "index": i});
-                sse.push_str(&format!("event: content_block_stop\ndata: {}\n\n", stop));
+                    let delta = serde_json::json!({
+                        "type": "content_block_delta",
+                        "index": i,
+                        "delta": {"type": "text_delta", "text": text}
+                    });
+                    sse.push_str(&format!("event: content_block_delta\ndata: {}\n\n", delta));
+
+                    let stop = serde_json::json!({"type": "content_block_stop", "index": i});
+                    sse.push_str(&format!("event: content_block_stop\ndata: {}\n\n", stop));
+                }
+                "tool_use" => {
+                    // Pass through tool_use blocks so the client can execute them
+                    let start = serde_json::json!({
+                        "type": "content_block_start",
+                        "index": i,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": block.get("id").cloned().unwrap_or(Value::String("".into())),
+                            "name": block.get("name").cloned().unwrap_or(Value::String("".into())),
+                            "input": {}
+                        }
+                    });
+                    sse.push_str(&format!("event: content_block_start\ndata: {}\n\n", start));
+
+                    // Send the full input as a single delta
+                    let input_str = block.get("input").map(|v| v.to_string()).unwrap_or("{}".into());
+                    let delta = serde_json::json!({
+                        "type": "content_block_delta",
+                        "index": i,
+                        "delta": {"type": "input_json_delta", "partial_json": input_str}
+                    });
+                    sse.push_str(&format!("event: content_block_delta\ndata: {}\n\n", delta));
+
+                    let stop = serde_json::json!({"type": "content_block_stop", "index": i});
+                    sse.push_str(&format!("event: content_block_stop\ndata: {}\n\n", stop));
+                }
+                _ => {
+                    // For thinking, etc. — pass through as raw content blocks
+                    let start = serde_json::json!({
+                        "type": "content_block_start",
+                        "index": i,
+                        "content_block": block
+                    });
+                    sse.push_str(&format!("event: content_block_start\ndata: {}\n\n", start));
+
+                    let stop = serde_json::json!({"type": "content_block_stop", "index": i});
+                    sse.push_str(&format!("event: content_block_stop\ndata: {}\n\n", stop));
+                }
             }
         }
     }
