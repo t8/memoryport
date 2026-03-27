@@ -128,8 +128,8 @@ jobs:
 
   release:
     needs: build
+    if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
