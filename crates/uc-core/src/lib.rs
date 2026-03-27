@@ -179,7 +179,8 @@ impl Engine {
         };
 
         let writer = {
-            let mut w = Writer::new_from_arc(arweave.clone());
+            let mut w = Writer::new_from_arc(arweave.clone())
+                .with_arweave_enabled(config.arweave.enabled);
             if let (Some(ref mk), Some(ref ks)) = (&master_key, &keystore) {
                 w = w.with_encryption(mk.clone(), ks.clone());
             }

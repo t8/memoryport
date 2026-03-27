@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useServiceHealth } from "../lib/ServiceContext";
-import { restartServiceByName, type ServiceInfo } from "../lib/api";
-import { RotateCw } from "lucide-react";
+import { restartServiceByName, restartAllServices, type ServiceInfo } from "../lib/api";
+import { RotateCw, Clock } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   running: "bg-accent",
@@ -17,6 +17,12 @@ const STATUS_LABELS: Record<string, string> = {
   unhealthy: "Unhealthy",
   crashed: "Crashed",
   stopped: "Stopped",
+};
+
+const SERVICE_PORTS: Record<string, number> = {
+  proxy: 9191,
+  engine: 8090,
+  ollama: 11434,
 };
 
 function ServiceRow({ info }: { info: ServiceInfo }) {
@@ -35,15 +41,26 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
   }
 
   const canRestart = info.name === "proxy" || info.name === "engine";
+  const isBadState = info.status === "crashed" || info.status === "stopped";
+  const port = SERVICE_PORTS[info.name];
 
   return (
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-6 py-1.5 text-sm hover:bg-surface transition-colors"
+        className={`w-full flex items-center gap-3 px-6 py-1.5 text-sm transition-colors ${
+          isBadState
+            ? "bg-[rgba(239,68,68,0.06)] hover:bg-[rgba(239,68,68,0.12)]"
+            : "hover:bg-surface"
+        }`}
       >
         <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[info.status] || "bg-cream-dim"}`} />
-        <span className="text-cream-muted capitalize flex-1 text-left">{info.name}</span>
+        <span className="text-cream-muted capitalize flex-1 text-left flex items-center gap-2">
+          {info.name}
+          {port && (
+            <span className="text-cream-dim text-[10px] font-mono">:{port}</span>
+          )}
+        </span>
         <span className="text-cream-dim text-xs font-mono">
           {STATUS_LABELS[info.status] || info.status}
         </span>
@@ -53,9 +70,8 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
           {info.uptime_secs != null && (
             <p>Uptime: {formatUptime(info.uptime_secs)}</p>
           )}
-          {info.restart_count > 0 && (
-            <p>Restarts: {info.restart_count}</p>
-          )}
+          <p>Restarts: {info.restart_count}</p>
+          {port && <p>Port: {port}</p>}
           {info.details && <p>{info.details}</p>}
           {canRestart && (
             <button
@@ -79,22 +95,68 @@ function formatUptime(secs: number): string {
   return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
 }
 
+function LastCheckedLabel({ lastCheckedAt }: { lastCheckedAt: number | null }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (!lastCheckedAt) return null;
+
+  const agoSecs = Math.max(0, Math.floor((now - lastCheckedAt) / 1000));
+  const label = agoSecs < 2 ? "just now" : `${agoSecs}s ago`;
+
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-cream-dim font-mono">
+      <Clock size={10} className="shrink-0" />
+      {label}
+    </span>
+  );
+}
+
 export default function ServiceStatus() {
-  const { health, loading } = useServiceHealth();
+  const { health, loading, lastCheckedAt } = useServiceHealth();
+  const [restartingAll, setRestartingAll] = useState(false);
 
   if (loading) return null;
 
   const services = [health.engine, health.proxy, health.mcp, health.ollama];
 
+  async function handleRestartAll() {
+    setRestartingAll(true);
+    try {
+      await restartAllServices();
+    } catch {
+      // ignore
+    } finally {
+      setTimeout(() => setRestartingAll(false), 4000);
+    }
+  }
+
   return (
     <div className="py-3">
-      <p className="px-6 text-xs text-cream-dim uppercase tracking-wider mb-2">
-        Services
-      </p>
+      <div className="px-6 flex items-center justify-between mb-2">
+        <p className="text-xs text-cream-dim uppercase tracking-wider">
+          Services
+        </p>
+        <LastCheckedLabel lastCheckedAt={lastCheckedAt} />
+      </div>
       <div className="space-y-0.5">
         {services.map((s) => (
           <ServiceRow key={s.name} info={s} />
         ))}
+      </div>
+      <div className="px-6 mt-2">
+        <button
+          onClick={handleRestartAll}
+          disabled={restartingAll}
+          className="flex items-center gap-1.5 text-[11px] text-cream-dim hover:text-cream transition-colors font-mono"
+        >
+          <RotateCw size={11} className={restartingAll ? "animate-spin" : ""} />
+          {restartingAll ? "Restarting..." : "Restart All"}
+        </button>
       </div>
     </div>
   );

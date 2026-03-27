@@ -430,6 +430,7 @@ pub struct ArweaveSettings {
     gateway: String,
     wallet_path: Option<String>,
     api_key: Option<String>,
+    enabled: bool,
     api_endpoint: Option<String>,
     address: Option<String>,
 }
@@ -489,6 +490,7 @@ pub async fn get_settings(
             } else {
                 None
             },
+            enabled: config.arweave.enabled,
             api_endpoint: config.arweave.api_endpoint.clone(),
             address,
         },
@@ -516,12 +518,12 @@ pub async fn update_settings(
     let table = config.as_table_mut().ok_or("invalid config")?;
 
     if let Some(arweave) = settings.get("arweave") {
-        if let Some(key) = arweave.get("api_key").and_then(|v| v.as_str()) {
-            if key != "••••••••" && !key.is_empty() {
-                let section = table
-                    .entry("arweave")
-                    .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
-                if let Some(section) = section.as_table_mut() {
+        let section = table
+            .entry("arweave")
+            .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+        if let Some(section) = section.as_table_mut() {
+            if let Some(key) = arweave.get("api_key").and_then(|v| v.as_str()) {
+                if key != "••••••••" && !key.is_empty() {
                     section.insert("api_key".into(), toml::Value::String(key.into()));
                     if !section.contains_key("wallet_path") {
                         section.insert(
@@ -530,6 +532,9 @@ pub async fn update_settings(
                         );
                     }
                 }
+            }
+            if let Some(enabled) = arweave.get("enabled").and_then(|v| v.as_bool()) {
+                section.insert("enabled".into(), toml::Value::Boolean(enabled));
             }
         }
     }

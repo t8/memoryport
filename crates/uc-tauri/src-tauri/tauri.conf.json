@@ -35,6 +35,10 @@
       "binaries/uc-proxy",
       "binaries/uc-mcp",
       "binaries/uc-server"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "Developer ID Application: Not Community Labs Inc (W7P3D4QPYL)",
+      "entitlements": null
+    }
   }
 }

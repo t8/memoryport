@@ -221,6 +221,23 @@ export default function Settings() {
             <h3 className="text-xl font-semibold text-cream">Arweave Storage</h3>
             <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.ai includes Turbo credits for uploads." />
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-base font-semibold text-cream">Enable Arweave Backup</p>
+              <p className="text-sm text-cream-muted mt-1">
+                Permanently store memories on Arweave (requires Pro API key)
+              </p>
+            </div>
+            <Toggle
+              enabled={settings.arweave.enabled}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  arweave: { ...settings.arweave, enabled: v },
+                })
+              }
+            />
+          </div>
           <div>
             <label className="block text-sm text-cream-muted mb-2">API Key</label>
             <input

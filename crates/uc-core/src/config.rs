@@ -38,6 +38,9 @@ pub struct ArweaveConfig {
     /// API endpoint for key validation and usage reporting.
     #[serde(default = "default_api_endpoint")]
     pub api_endpoint: Option<String>,
+    /// Enable Arweave permanent backup (requires Pro API key).
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 fn default_gateway() -> String {
@@ -60,6 +63,7 @@ impl Default for ArweaveConfig {
             wallet_path: None,
             api_key: None,
             api_endpoint: default_api_endpoint(),
+            enabled: false,
         }
     }
 }

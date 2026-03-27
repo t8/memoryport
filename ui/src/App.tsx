@@ -14,6 +14,9 @@ function FirstRunGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [checked, setChecked] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   useEffect(() => {
     if (location.pathname === "/setup") {
@@ -21,24 +24,89 @@ function FirstRunGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Only check in Tauri mode — web mode assumes server is running
+    // Only check in Tauri mode -- web mode assumes server is running
     if (!isTauri()) {
       setChecked(true);
       return;
     }
 
-    checkConfigExists().then((exists) => {
-      if (!exists) {
-        navigate("/setup", { replace: true });
-      }
-      setChecked(true);
-    });
+    checkConfigExists()
+      .then((exists) => {
+        if (!exists) {
+          navigate("/setup", { replace: true });
+        }
+        setChecked(true);
+      })
+      .catch((err) => {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        setCheckError("Could not connect to the Memoryport server.");
+        setErrorDetails(rawMsg);
+      });
   }, []);
+
+  if (checkError) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center p-8">
+        <div className="max-w-md w-full border border-error/50 bg-error/10 p-6 text-center">
+          <p className="text-cream font-medium">Start the Memoryport server first</p>
+          <p className="text-sm text-cream-muted mt-2">
+            The app needs the Memoryport backend to be running before it can start.
+          </p>
+          <div className="mt-4 text-left bg-bg/50 p-3 text-xs font-mono text-cream-dim space-y-1">
+            <p># Start the server:</p>
+            <p>uc-server --config ~/.memoryport/uc.toml</p>
+            <p className="mt-2"># Or, if using the Tauri desktop app,</p>
+            <p># restart the application.</p>
+          </div>
+          {errorDetails && (
+            <div className="mt-3">
+              <button
+                onClick={() => setShowErrorDetails(!showErrorDetails)}
+                className="text-xs text-cream-dim hover:text-cream-muted transition-colors"
+              >
+                {showErrorDetails ? "Hide" : "Show"} technical details
+              </button>
+              {showErrorDetails && (
+                <pre className="mt-1 text-xs text-cream-dim bg-bg/50 p-2 overflow-x-auto font-mono text-left">
+                  {errorDetails}
+                </pre>
+              )}
+            </div>
+          )}
+          <button
+            onClick={() => {
+              setCheckError(null);
+              setErrorDetails(null);
+              setShowErrorDetails(false);
+              setChecked(false);
+              // Re-run the check
+              checkConfigExists()
+                .then((exists) => {
+                  if (!exists) {
+                    navigate("/setup", { replace: true });
+                  }
+                  setChecked(true);
+                })
+                .catch((err2) => {
+                  const rawMsg2 = err2 instanceof Error ? err2.message : String(err2);
+                  setCheckError("Could not connect to the Memoryport server.");
+                  setErrorDetails(rawMsg2);
+                });
+            }}
+            className="mt-4 px-4 py-1.5 bg-surface border border-border hover:bg-surface-hover text-cream text-sm transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!checked) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center text-cream-muted text-sm">
-        Loading...
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center gap-3">
+        <div className="w-5 h-5 border-2 border-cream-dim border-t-cream rounded-full animate-spin" />
+        <p className="text-cream-muted text-sm">Loading...</p>
       </div>
     );
   }

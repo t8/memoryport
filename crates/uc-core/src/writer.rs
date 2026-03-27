@@ -29,6 +29,7 @@ pub struct Writer {
     master_key: Option<MasterKey>,
     keystore: Option<Arc<KeyStore>>,
     account: Option<Arc<AccountClient>>,
+    arweave_enabled: bool,
 }
 
 impl Writer {
@@ -38,7 +39,13 @@ impl Writer {
             master_key: None,
             keystore: None,
             account: None,
+            arweave_enabled: false,
         }
+    }
+
+    pub fn with_arweave_enabled(mut self, enabled: bool) -> Self {
+        self.arweave_enabled = enabled;
+        self
     }
 
     pub fn with_encryption(mut self, master_key: MasterKey, keystore: Arc<KeyStore>) -> Self {
@@ -89,7 +96,28 @@ impl Writer {
             json_bytes
         };
 
-        // 4. Check API key / credit sharing if account is configured
+        // 4. Skip Arweave upload if not enabled
+        if !self.arweave_enabled {
+            let local_id = format!("local_{}", batch.id);
+            debug!(batch_id = %batch.id, "arweave disabled, storing locally only");
+
+            // Store encrypted batch key if needed
+            if self.master_key.is_some() {
+                if let Some(ref keystore) = self.keystore {
+                    if let Some(key_tag) = tags.iter().find(|t| t.name == "UC-Batch-Key") {
+                        let ebk = EncryptedBatchKey::from_base64(&key_tag.value)?;
+                        keystore.store(&local_id, &ebk, &batch.user_id).await?;
+                    }
+                }
+            }
+
+            return Ok(UploadReceipt {
+                tx_id: local_id,
+                timestamp: Utc::now(),
+            });
+        }
+
+        // 5. Check API key / credit sharing if account is configured
         let paid_by = if let Some(ref account) = self.account {
             let wallet_address = self
                 .arweave

@@ -194,6 +194,7 @@ export interface SettingsData {
     gateway: string;
     wallet_path: string | null;
     api_key: string | null;
+    enabled: boolean;
     api_endpoint: string | null;
     address: string | null;
   };
@@ -280,6 +281,10 @@ export async function stopServices(): Promise<void> {
 
 export async function restartServiceByName(service: string): Promise<void> {
   if (IS_TAURI) return tauriInvoke("restart_service", { service });
+}
+
+export async function restartAllServices(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke<void>("stop_services").then(() => tauriInvoke("start_services"));
 }
 
 export interface SetupConfig {

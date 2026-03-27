@@ -6,19 +6,54 @@ import {
   type Status,
   type IntegrationsStatus,
 } from "../lib/api";
+import { useServiceHealth } from "../lib/ServiceContext";
 import Toggle from "../components/Toggle";
 import Tooltip from "../components/Tooltip";
 import {
   Server,
   Shield,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
+
+function StatusBadge({ status }: { status: "running" | "stopped" | "starting" | "unhealthy" | "crashed" }) {
+  const isUp = status === "running";
+  const label = isUp ? "Active" : status === "starting" ? "Starting" : "Inactive";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded ${
+        isUp
+          ? "text-accent bg-[rgba(132,204,22,0.1)]"
+          : status === "starting"
+          ? "text-yellow-400 bg-[rgba(250,204,21,0.1)]"
+          : "text-cream-dim bg-[rgba(255,244,224,0.05)]"
+      }`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${
+          isUp ? "bg-accent" : status === "starting" ? "bg-yellow-400" : "bg-cream-dim"
+        }`}
+      />
+      {label}
+    </span>
+  );
+}
+
+function ServiceOfflineWarning() {
+  return (
+    <div className="flex items-center gap-2 mt-3 text-xs text-cream-dim">
+      <AlertTriangle size={12} className="text-error shrink-0" />
+      <span>Service offline</span>
+    </div>
+  );
+}
 
 export default function Integrations() {
   const [status, setStatus] = useState<Status | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationsStatus | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const { health } = useServiceHealth();
 
   useEffect(() => {
     getStatus().then(setStatus).catch(console.error);
@@ -72,11 +107,13 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">MCP Server</h3>
+                  <StatusBadge status={health.mcp.status} />
                   <Tooltip content="The MCP server exposes Memoryport as tools to AI assistants like Claude Code and Cursor. It runs over stdio and lets the AI store and retrieve memories." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
                   Provides memory tools to Claude Code, Cursor, and other MCP-compatible editors
                 </p>
+                {health.mcp.status !== "running" && mcpEnabled && <ServiceOfflineWarning />}
               </div>
             </div>
             <div className="shrink-0 ml-4">
@@ -116,11 +153,13 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">API Proxy</h3>
+                  <StatusBadge status={health.proxy.status} />
                   <Tooltip content="The proxy sits between your editor and the AI provider (Anthropic/OpenAI). It captures every message automatically and injects relevant context from your memory." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
                   Transparent capture of all conversations — both your messages and AI responses
                 </p>
+                {health.proxy.status !== "running" && proxyEnabled && <ServiceOfflineWarning />}
               </div>
             </div>
             <div className="shrink-0 ml-4">
@@ -160,6 +199,7 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">Ollama Auto-Capture</h3>
+                  <StatusBadge status={health.ollama.status} />
                   <Tooltip content="Captures conversations with local Ollama models. Works with Open WebUI, Continue.dev, terminal, and API clients." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
@@ -167,6 +207,7 @@ export default function Integrations() {
                     ? "Capturing Ollama conversations via Open WebUI, Continue.dev, terminal, and API clients"
                     : "Memory capture for local Ollama models (Open WebUI, Continue.dev, terminal, API)"}
                 </p>
+                {health.ollama.status !== "running" && ollamaEnabled && <ServiceOfflineWarning />}
               </div>
             </div>
             <div className="shrink-0 ml-4">

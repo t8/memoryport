@@ -100,13 +100,32 @@ export default function SessionDetail() {
       <div className="px-8 mt-6 pb-8">
         {error && (
           <div className="border border-error/50 bg-error/10 p-4 mb-4">
-            <p className="text-error text-sm">{error}</p>
-            <button
-              onClick={() => sessionId && loadSession(sessionId)}
-              className="mt-2 text-xs text-cream-dim hover:text-cream"
-            >
-              Retry
-            </button>
+            <p className="text-error text-sm font-medium">Could not load session</p>
+            <p className="text-xs text-cream-muted mt-1">
+              The session data could not be retrieved. The server may be restarting or the session may no longer exist.
+            </p>
+            <details className="mt-2">
+              <summary className="text-xs text-cream-dim hover:text-cream-muted cursor-pointer transition-colors">
+                Technical details
+              </summary>
+              <pre className="mt-1 text-xs text-cream-dim bg-bg/50 p-2 overflow-x-auto font-mono">
+                {error}
+              </pre>
+            </details>
+            <div className="flex items-center gap-3 mt-3">
+              <button
+                onClick={() => sessionId && loadSession(sessionId)}
+                className="px-3 py-1.5 bg-surface border border-border hover:bg-surface-hover text-cream text-sm transition-colors"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => navigate("/")}
+                className="px-3 py-1.5 bg-surface border border-border hover:bg-surface-hover text-cream text-sm transition-colors"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         )}
 

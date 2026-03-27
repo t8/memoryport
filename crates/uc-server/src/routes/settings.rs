@@ -41,6 +41,7 @@ pub struct ArweaveSettings {
     pub gateway: String,
     pub wallet_path: Option<String>,
     pub api_key: Option<String>,
+    pub enabled: bool,
     pub api_endpoint: Option<String>,
     pub address: Option<String>,
 }
@@ -97,6 +98,7 @@ pub async fn get_settings(
             gateway: config.arweave.gateway.clone(),
             wallet_path: config.arweave.wallet_path.clone(),
             api_key: if has_api_key { Some("••••••••".into()) } else { None },
+            enabled: config.arweave.enabled,
             api_endpoint: config.arweave.api_endpoint.clone(),
             address,
         },
@@ -132,7 +134,6 @@ pub async fn update_settings(
             if let Some(ref key) = arweave.api_key {
                 if key != "••••••••" && !key.is_empty() {
                     section.insert("api_key".into(), toml::Value::String(key.clone()));
-                    // Auto-set wallet_path if not already set
                     if !section.contains_key("wallet_path") {
                         section.insert(
                             "wallet_path".into(),
@@ -140,6 +141,9 @@ pub async fn update_settings(
                         );
                     }
                 }
+            }
+            if let Some(enabled) = arweave.enabled {
+                section.insert("enabled".into(), toml::Value::Boolean(enabled));
             }
         }
     }
@@ -228,4 +232,5 @@ pub struct SettingsUpdate {
 #[derive(Debug, Deserialize)]
 pub struct ArweaveSettingsUpdate {
     pub api_key: Option<String>,
+    pub enabled: Option<bool>,
 }
