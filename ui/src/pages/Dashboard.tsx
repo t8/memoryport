@@ -140,16 +140,28 @@ export default function Dashboard() {
       </div>
 
       {/* Status cards */}
-      <div className="grid grid-cols-3 gap-6 px-8 mt-6">
+      <div className="grid grid-cols-4 gap-6 px-8 mt-6">
+        <StatusCard
+          label="Context space"
+          value={status ? `${Math.round(status.indexed_chunks * 375 / 1000).toLocaleString()}K` : "—"}
+          suffix="tokens"
+          tooltip="The total size of your persistent memory — all tokens stored and available for retrieval. This is separate from your model's context window."
+        />
         <StatusCard
           label="Indexed chunks"
-          value={status?.indexed_chunks ?? "—"}
+          value={status?.indexed_chunks?.toLocaleString() ?? "—"}
+          tooltip="Individual pieces of text stored in the vector database. Each chunk is ~375 tokens (~1,500 characters)."
         />
-        <StatusCard label="Sessions" value={sessions.length} />
+        <StatusCard
+          label="Sessions"
+          value={sessions.length}
+          tooltip="Distinct conversation sessions captured by Memoryport. A new session is created after 30 minutes of inactivity."
+        />
         <StatusCard
           label="Embedding model"
           value={status?.embedding_model ?? "—"}
           detail={status ? `${status.embedding_dimensions}d` : undefined}
+          tooltip="The model used to convert text into vectors for semantic search. Dimensions (d) affect search precision."
         />
       </div>
 

@@ -14,6 +14,7 @@ import {
   Shield,
   Loader2,
   AlertTriangle,
+  Braces,
 } from "lucide-react";
 
 function StatusBadge({ status }: { status: "running" | "stopped" | "starting" | "unhealthy" | "crashed" }) {
@@ -125,6 +126,12 @@ export default function Integrations() {
                 <p className="text-sm text-cream-muted mt-1">
                   Provides memory tools to Claude Code, Cursor, and other MCP-compatible editors
                 </p>
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="text-xs text-cream-dim">Works with:</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Claude Code</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Cursor</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any MCP client</span>
+                </div>
               </div>
             </div>
             <div className="shrink-0 ml-4">
@@ -177,6 +184,13 @@ export default function Integrations() {
                 <p className="text-sm text-cream-muted mt-1">
                   Transparent capture of all conversations — both your messages and AI responses
                 </p>
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="text-xs text-cream-dim">Works with:</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Claude Code</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Cursor</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">ChatGPT API</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any OpenAI-compatible app</span>
+                </div>
                 {proxyEnabled && health.proxy.status !== "running" && <ServiceOfflineWarning />}
               </div>
             </div>
@@ -213,7 +227,7 @@ export default function Integrations() {
         <div className="border border-border bg-bg p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
-              <OllamaIcon />
+              <img src="/integrations/ollama.svg" alt="Ollama" className="w-8 h-8 shrink-0 mt-1 opacity-50" />
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">Ollama Auto-Capture</h3>
@@ -225,6 +239,13 @@ export default function Integrations() {
                     ? "Capturing Ollama conversations via Open WebUI, Continue.dev, terminal, and API clients"
                     : "Memory capture for local Ollama models (Open WebUI, Continue.dev, terminal, API)"}
                 </p>
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="text-xs text-cream-dim">Works with:</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Open WebUI</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Continue.dev</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Ollama CLI</span>
+                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any Ollama client</span>
+                </div>
                 {health.ollama.status !== "running" && ollamaEnabled && <ServiceOfflineWarning />}
               </div>
             </div>
@@ -265,7 +286,7 @@ export default function Integrations() {
         <div className="border border-border bg-bg p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
-              <EmbeddingIcon />
+              <Braces size={32} className="text-cream-dim mt-1 shrink-0" />
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">Embedding Provider</h3>
@@ -322,16 +343,7 @@ function OllamaIcon() {
 
 function ArweaveIcon() {
   return (
-    <div className="w-8 h-8 flex items-center justify-center rounded-full border border-cream-dim text-cream-dim text-sm font-semibold shrink-0 mt-1">
-      a
-    </div>
+    <span className="text-cream-dim text-[32px] leading-none shrink-0 mt-1">ⓐ</span>
   );
 }
 
-function EmbeddingIcon() {
-  return (
-    <div className="w-8 h-8 flex items-center justify-center rounded-full border border-cream-dim text-cream-dim text-sm font-semibold shrink-0 mt-1">
-      e
-    </div>
-  );
-}
