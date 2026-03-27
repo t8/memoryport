@@ -119,8 +119,8 @@ jobs:
       - name: Build Tauri app
         working-directory: crates/uc-tauri/src-tauri
         env:
-          # macOS signing — Tauri reads these automatically
           APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: cargo tauri build --target ${{ matrix.target }}
 
       # macOS: Notarize the .dmg
@@ -150,14 +150,21 @@ jobs:
         shell: bash
         run: |
           echo "Searching for Tauri bundles..."
-          find target -name "*.dmg" -o -name "*.app" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.deb" 2>/dev/null | head -20
+          find target -name "*.dmg" -o -name "*.app" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.sig" -o -name "*.nsis.zip" 2>/dev/null | head -30
           echo "---"
-          # Collect all bundle paths
           mkdir -p dist
+          # Installer bundles
           find target -name "*.dmg" -exec cp {} dist/ \; 2>/dev/null || true
-          find target -name "*.AppImage" -exec cp {} dist/ \; 2>/dev/null || true
-          find target -name "*.msi" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -name "*.AppImage" -not -name "*.tar.gz" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -name "*.msi" -not -name "*.zip" -exec cp {} dist/ \; 2>/dev/null || true
           find target -name "*.deb" -exec cp {} dist/ \; 2>/dev/null || true
+          # Updater bundles + signatures
+          find target -path "*/bundle/macos/*.tar.gz" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -path "*/bundle/macos/*.tar.gz.sig" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -path "*/bundle/appimage/*.tar.gz" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -path "*/bundle/appimage/*.tar.gz.sig" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -path "*/bundle/nsis/*.nsis.zip" -exec cp {} dist/ \; 2>/dev/null || true
+          find target -path "*/bundle/nsis/*.nsis.zip.sig" -exec cp {} dist/ \; 2>/dev/null || true
           ls -la dist/ || echo "No bundles found"
 
       - name: Upload artifacts
@@ -177,6 +184,83 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
+      - name: Generate latest.json for auto-updater
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          BASE_URL="https://github.com/t8/memoryport/releases/download/${TAG}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Read signatures from .sig files
+          read_sig() {
+            local pattern="$1"
+            local sig_file=$(find memoryport-* -name "$pattern" 2>/dev/null | head -1)
+            if [ -n "$sig_file" ]; then
+              cat "$sig_file"
+            else
+              echo ""
+            fi
+          }
+
+          # Find updater bundle filenames
+          find_bundle() {
+            local pattern="$1"
+            find memoryport-* -name "$pattern" ! -name "*.sig" 2>/dev/null | head -1 | xargs -I{} basename {} 2>/dev/null || echo ""
+          }
+
+          MACOS_AARCH64_BUNDLE=$(find_bundle "*.app.tar.gz" | head -1)
+          MACOS_AARCH64_SIG=$(read_sig "*.app.tar.gz.sig" | head -1)
+
+          # Build platforms JSON
+          PLATFORMS="{}"
+
+          # macOS aarch64
+          SIG_FILE=$(find memoryport-aarch64-apple-darwin -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
+          BUNDLE_FILE=$(find memoryport-aarch64-apple-darwin -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
+          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
+            SIG=$(cat "$SIG_FILE")
+            NAME=$(basename "$BUNDLE_FILE")
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"darwin-aarch64": {"signature": $sig, "url": $url}}')
+          fi
+
+          # macOS x86_64
+          SIG_FILE=$(find memoryport-x86_64-apple-darwin -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
+          BUNDLE_FILE=$(find memoryport-x86_64-apple-darwin -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
+          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
+            SIG=$(cat "$SIG_FILE")
+            NAME=$(basename "$BUNDLE_FILE")
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"darwin-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          # Linux x86_64
+          SIG_FILE=$(find memoryport-x86_64-unknown-linux-gnu -name "*.AppImage.tar.gz.sig" 2>/dev/null | head -1)
+          BUNDLE_FILE=$(find memoryport-x86_64-unknown-linux-gnu -name "*.AppImage.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
+          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
+            SIG=$(cat "$SIG_FILE")
+            NAME=$(basename "$BUNDLE_FILE")
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"linux-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          # Windows x86_64
+          SIG_FILE=$(find memoryport-x86_64-pc-windows-msvc -name "*.nsis.zip.sig" 2>/dev/null | head -1)
+          BUNDLE_FILE=$(find memoryport-x86_64-pc-windows-msvc -name "*.nsis.zip" ! -name "*.sig" 2>/dev/null | head -1)
+          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
+            SIG=$(cat "$SIG_FILE")
+            NAME=$(basename "$BUNDLE_FILE")
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "Release ${TAG}" \
+            --arg pub_date "$PUB_DATE" \
+            --argjson platforms "$PLATFORMS" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' > latest.json
+
+          echo "Generated latest.json:"
+          cat latest.json
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -185,5 +269,9 @@ jobs:
             memoryport-*/**/*.AppImage
             memoryport-*/**/*.msi
             memoryport-*/**/*.exe
+            memoryport-*/**/*.app.tar.gz
+            memoryport-*/**/*.AppImage.tar.gz
+            memoryport-*/**/*.nsis.zip
+            latest.json
           draft: false
           prerelease: false

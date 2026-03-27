@@ -28,7 +28,7 @@
       "endpoints": [
         "https://github.com/t8/memoryport/releases/latest/download/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1RUFFN0U3QTUyNUU2QwpSV1JzWGxKNmZxNWVESHZKZndobUNDYXFGa0FHZEkwaWFXZjhJM1BBY25tZlQraExlSHRuanM2MQo="
     }
   },
   "bundle": {
