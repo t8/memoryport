@@ -1,16 +1,50 @@
-```
- __  __                                                _
-|  \/  | ___ _ __ ___   ___  _ __ _   _ _ __   ___  _ __| |_
-| |\/| |/ _ \ '_ ` _ \ / _ \| '__| | | | '_ \ / _ \| '__| __|
-| |  | |  __/ | | | | | (_) | |  | |_| | |_) | (_) | |  | |_
-|_|  |_|\___|_| |_| |_|\___/|_|   \__, | .__/ \___/|_|   \__|
-                                   |___/|_|
-   Destroyer of the context window
-```
+<p align="center">
+  <img src=".github/banner.jpg" alt="Memoryport — Permanent memory for any LLM" width="100%" />
+</p>
 
-Memoryport gives LLMs persistent, queryable memory using [Arweave](https://arweave.com) for permanent storage and [LanceDB](https://lancedb.com) for local vector search. Every conversation, document, and knowledge artifact is stored permanently and retrieved semantically — so your AI never forgets.
+<p align="center">
+  <a href="https://memoryport.ai">Website</a> &middot;
+  <a href="https://github.com/t8/memoryport/releases">Download</a> &middot;
+  <a href="https://github.com/t8/amp-spec">AMP Spec</a>
+</p>
+
+Memoryport gives LLMs persistent, queryable memory using [Arweave](https://arweave.org) for permanent storage and [LanceDB](https://lancedb.com) for local vector search. Every conversation is stored permanently and retrieved semantically — so your AI never forgets.
 
 Works with **Claude Code**, **Cursor**, **Open WebUI**, **Ollama**, and any OpenAI-compatible tool.
+
+## Install
+
+### Desktop App
+
+Download the latest release for your platform:
+
+| Platform | Download |
+|----------|----------|
+| **macOS** (Apple Silicon & Intel) | [Download .dmg](https://memoryport.ai/api/download?platform=mac) |
+| **Linux** (x64) | [Download .AppImage](https://memoryport.ai/api/download?platform=linux) |
+
+The desktop app includes a setup wizard, dashboard, and manages all services automatically.
+
+### CLI
+
+```bash
+curl -fsSL https://memoryport.ai/install | sh
+```
+
+Then run the setup wizard:
+```bash
+uc init
+```
+
+That's it. Restart your editor — Memoryport auto-captures conversations and surfaces relevant context.
+
+### Build from Source
+
+```bash
+# Prerequisites: Rust 1.91+, protoc (brew install protobuf), Node.js 18+, pnpm
+cargo build --release
+cd ui && pnpm install && pnpm build  # Dashboard
+```
 
 ## Performance
 
@@ -27,33 +61,6 @@ Works with **Claude Code**, **Cursor**, **Open WebUI**, **Ollama**, and any Open
 | 500M tokens | 1,333,333 | 294ms |
 
 Tested with `nomic-embed-text` (768d, local via Ollama). Compacted LanceDB, no cloud APIs required.
-
-## Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/t8/memoryport/main/install.sh | sh
-```
-
-Then run the setup wizard:
-```bash
-uc init
-```
-
-That's it. Restart your editor — Memoryport auto-captures conversations and surfaces relevant context.
-
-Also available via:
-```bash
-brew install memoryport/tap/uc     # Homebrew
-npx @memoryport/cli init           # npm
-```
-
-### Build from Source
-
-```bash
-# Prerequisites: Rust 1.91+, protoc (brew install protobuf), Node.js 18+
-cargo build --release
-cd ui && pnpm install && pnpm build  # Dashboard
-```
 
 ## Supported Integrations
 
@@ -116,22 +123,17 @@ Multi-turn lets the model iteratively refine its memory queries — useful for c
 
 ## Dashboard
 
-Memoryport includes a React dashboard for visualizing your stored memories:
+The Tauri desktop app includes a full dashboard. For CLI users, run the stack manually:
 
 ```bash
-# Start the API server + proxy + dashboard
-uc-server --config ~/.memoryport/uc.toml    # API on :8090
-uc-proxy --config ~/.memoryport/uc.toml     # Proxy on :9191
-cd ui && pnpm dev                            # Dashboard on :5174
+./dev.sh start    # Build and start server + proxy + UI
 ```
 
 **Pages:**
-- **Dashboard** — status cards, session browser, semantic search with keyword highlighting
-- **Analytics** — activity sparklines, storage growth, type/source distribution, memory density heatmap, sync status
-- **Integrations** — toggle MCP server, API proxy, Ollama capture on/off. Real controls that write config and start/stop services.
+- **Dashboard** — context space, indexed chunks, session browser, semantic search
+- **Analytics** — activity sparklines, storage growth, type/source distribution, sync status
+- **Integrations** — toggle MCP server, API proxy, Ollama capture on/off with live status
 - **Settings** — embedding provider, model, API key, smart gating, encryption, Arweave wallet
-
-Also available as a Tauri desktop app (macOS/Windows/Linux).
 
 ## CLI
 
@@ -206,9 +208,9 @@ crates/
 ├── uc-mcp/          # MCP server (stdio, 7 tools, 2 resources)
 ├── uc-proxy/        # Multi-protocol API proxy (Anthropic + OpenAI + Ollama)
 ├── uc-server/       # Multi-tenant hosted API server + dashboard
-└── uc-tauri/        # Tauri desktop app
+└── uc-tauri/        # Tauri desktop app (macOS, Linux)
 
-ui/                  # React dashboard (Vite + Tailwind)
+ui/                  # React 19 dashboard (Vite + Tailwind)
 ```
 
 ## Security
@@ -216,7 +218,6 @@ ui/                  # React dashboard (Vite + Tailwind)
 - All data on Arweave is encrypted with AES-256-GCM (per-batch random keys)
 - Master key derived from passphrase via Argon2id
 - Logical deletion: destroy batch key → ciphertext permanently unreadable
-- API keys: 128-bit entropy, SHA-256 hashed, stored in SQLite
 - Proxy sanitizes system prompts, internal commands, and meta-requests before storage
 
 ## Deployment
@@ -255,6 +256,17 @@ curl -X POST http://localhost:8080/v1/query \
   -H "Content-Type: application/json" \
   -d '{"query": "How does Arweave pricing work?"}'
 ```
+
+## Data Recovery
+
+If you lose your local data or set up on a new machine, Pro users can rebuild their memory from Arweave:
+
+1. Install Memoryport on the new machine
+2. Open Settings → Arweave Storage
+3. Enter your API key
+4. Click "Rebuild from Arweave"
+
+All encrypted batches are fetched from the permanent storage network and re-indexed locally. Your encryption key never leaves your machine — data is decrypted client-side during rebuild.
 
 ## Benchmarks
 
@@ -321,16 +333,9 @@ python3 tests/latency/mock_upstream.py --port 8199 &
 python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://127.0.0.1:8199
 ```
 
-## Data Recovery
+## Contributing
 
-If you lose your local data or set up on a new machine, Pro users can rebuild their memory from Arweave:
-
-1. Install Memoryport on the new machine
-2. Open Settings → Arweave Storage
-3. Enter your API key
-4. Click "Rebuild from Arweave"
-
-All encrypted batches are fetched from the permanent storage network and re-indexed locally. Your encryption key never leaves your machine — data is decrypted client-side during rebuild.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

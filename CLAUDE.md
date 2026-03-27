@@ -4,6 +4,9 @@
 
 Memoryport is a Rust workspace that gives LLM interactions persistent, queryable memory using Arweave for permanent storage and LanceDB for local vector indexing. Data on Arweave is encrypted (AES-256-GCM) with per-batch keys and an Argon2id-derived master key. Includes a React dashboard (Tauri desktop + web), transparent API proxy for Anthropic/OpenAI/Ollama, and MCP server for Claude Code/Cursor.
 
+**Website:** [memoryport.ai](https://memoryport.ai) — Next.js app in separate repo (`t8/memoryport-web`)
+**AMP Spec:** [github.com/t8/amp-spec](https://github.com/t8/amp-spec) — open protocol for memory injection
+
 ## Build & Test
 
 ```bash
@@ -82,12 +85,37 @@ uc-proxy       — Multi-protocol proxy: Anthropic /v1/messages, OpenAI /v1/chat
                  Ollama /api/chat + /api/generate. Context injection + auto-capture.
 uc-server      — Multi-tenant HTTP API: per-user engine pool, API key auth, rate limiting,
                  Prometheus metrics, integration management, serves React dashboard
-uc-tauri       — Tauri desktop app wrapper (shares uc-core)
+uc-tauri       — Tauri 2.x desktop app with sidecar binaries, lazy engine init, service manager,
+                 auto-updater (checks GitHub releases for latest.json)
 ```
 
 Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integrations, settings.
 
 **Dependency graph:** `uc-arweave` and `uc-embeddings` have no internal deps. `uc-core` depends on both. Everything else depends on `uc-core`.
+
+## Release & Distribution
+
+### CLI Install
+- **Canonical URL:** `curl -fsSL https://memoryport.ai/install | sh` (served by memoryport-web `src/app/install/route.ts`)
+- **Repo script:** `install.sh` (installs to `~/.memoryport/bin`)
+- Both install all 4 binaries: `uc`, `uc-mcp`, `uc-proxy`, `uc-server`
+
+### Desktop App
+- Built by `.github/workflows/tauri-build.yml` on version tags (`v*`)
+- Platforms: macOS (aarch64, x86_64), Linux (x86_64). Windows disabled for now.
+- macOS builds are code-signed and notarized (Apple Developer ID: Not Community Labs Inc)
+- Download redirect API: `memoryport.ai/api/download?platform=mac|linux`
+
+### Auto-Updater
+- Plugin: `tauri-plugin-updater` v2 in `crates/uc-tauri/src-tauri/`
+- Endpoint: `https://github.com/t8/memoryport/releases/latest/download/latest.json`
+- Signing key: private key stored as `TAURI_SIGNING_PRIVATE_KEY` GitHub secret, public key in `tauri.conf.json`
+- CI generates `latest.json` manifest from `.sig` files during release
+
+### CI Workflows
+- `tauri-build.yml` — Tauri desktop app builds + `latest.json` updater manifest
+- `release.yml` — CLI binary tarballs (`memoryport-{os}-{arch}.tar.gz`)
+- Both trigger on `v*` tags
 
 ## Terminology
 
@@ -103,6 +131,8 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - **LanceDB v0.15** with arrow-array/arrow-schema v53 — versions must stay aligned.
 - **`checkout_latest()`** before every LanceDB read — required for cross-process visibility (proxy writes, server reads).
 - **`count_rows()`** for counting — query-based counting returns stale cached results.
+- **Explicit `.limit()` on all LanceDB queries** — Rust API defaults to 10 rows without it.
+- **Compaction, not IVF-PQ** — LanceDB fragment compaction brought 2s queries to 104ms. IVF-PQ was slower and took 30+ minutes to build.
 - **AES-256-GCM encryption** — per-batch keys wrapped with Argon2id master key.
 - **Three-gate retrieval gating** — rule-based → embedding routing → post-retrieval quality check.
 - **Proxy uses raw `serde_json::Value`** — never deserialize/reserialize Anthropic content blocks (causes "Input tag 'Other'" errors with tool_use, thinking, etc.).
@@ -115,6 +145,13 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - **AccountClient** — `uc-core/src/account.rs` handles key validation (1-hour cache), usage reporting, graceful fallback to local-only on network errors.
 - **Hot-reloadable proxy config** — `HotConfig` in proxy checks config file mtime on each request. Settings changes (e.g., multi-turn toggle) take effect without proxy restart.
 - **Augmented Memory Protocol (AMP)** — the context injection approach is being standardized as [AMP](https://github.com/t8/amp-spec), defining how memory enters the prompt (append, system, tool strategies).
+
+## UI Design System
+
+- **Palette:** Dark bg (#0d0d0d), cream text (#fff4e0), cream-muted (0.7 opacity), cream-dim (0.5 opacity), accent green (#84cc16), error red
+- **Fonts:** Upheaval TT BRK (display/logo), Switzer (sans body), DM Mono (monospace)
+- **Components:** StatusCard (with tooltip, suffix), Toggle, Tooltip, SearchBar, SessionList
+- **Icons:** Lucide icons with `text-cream-dim` class. Ollama uses custom SVG at `ui/public/integrations/ollama.svg`. Arweave uses `ⓐ` glyph.
 
 ## Conventions
 
@@ -133,8 +170,11 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - `rsa` crate PSS signing: use `BlindedSigningKey::<Sha256>`, get bytes via `SignatureEncoding::to_vec()`.
 - LanceDB `FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>` for vector columns. `Array` trait must be imported for `is_null()`.
 - LanceDB cross-process reads: `Table` caches version snapshots. Must call `checkout_latest()` before reads, or use `count_rows()` instead of query-based counting.
+- LanceDB Rust API defaults to 10 rows on `query()` — always use explicit `.limit()`.
+- LanceDB compaction (`OptimizeAction::Compact`) is the fix for fragmentation. NOT `All` (which rebuilds indices) and NOT IVF-PQ (slower for our scale).
 - `tower-http` `TimeoutLayer::with_status_code(status, duration)` — status code is the first argument.
 - Argon2id salt must be at least 16 bytes.
+- ANS-104 deep hash: tags must be raw avro bytes (`encode_avro_tags`), not structured tag pairs.
 - Claude Code MCP config goes in `~/.claude.json` (not `~/.claude/settings.json`).
 - Claude Code sends `authorization: Bearer` header, not `x-api-key`. Proxy must forward both.
 - Claude Code system prompt content leaks into stored chunks via the proxy. Must sanitize `<system-reminder>`, memory file dumps, and `<local-command-*>` tags before storage.
@@ -142,3 +182,6 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - Open WebUI sends meta-requests through the same `/api/chat` endpoint (title generation, tag generation). Detect by checking for "### Task:", "JSON format" in system prompts.
 - Ollama desktop app doesn't support custom endpoints or MCP. Only terminal, Open WebUI, Continue.dev, and API clients can route through the proxy.
 - Ollama.app on macOS auto-respawns via launchd. Don't try to kill it and take its port.
+- Tauri updater needs minisign key pair. Generate with `cargo tauri signer generate --ci`. Private key goes in `TAURI_SIGNING_PRIVATE_KEY` GitHub secret, public key in `tauri.conf.json`.
+- Tauri updater `latest.json` must be generated in CI from `.sig` files and uploaded to GitHub release.
+- SVG icons with `fill="currentColor"` don't work in `<img>` tags — bake the fill color into the SVG file and use CSS opacity to adjust.
