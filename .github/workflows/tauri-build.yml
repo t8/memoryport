@@ -175,70 +175,50 @@ jobs:
       - name: Generate latest.json for auto-updater
         shell: bash
         run: |
+          set +e  # Don't exit on errors — we handle missing files gracefully
           VERSION="${GITHUB_REF_NAME#v}"
           TAG="${GITHUB_REF_NAME}"
           BASE_URL="https://github.com/t8/memoryport/releases/download/${TAG}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Read signatures from .sig files
-          read_sig() {
-            local pattern="$1"
-            local sig_file=$(find memoryport-* -name "$pattern" 2>/dev/null | head -1)
-            if [ -n "$sig_file" ]; then
-              cat "$sig_file"
+          echo "=== Downloaded artifacts ==="
+          ls -R memoryport-* 2>/dev/null || echo "No artifact directories found"
+          echo "==="
+
+          PLATFORMS="{}"
+
+          add_platform() {
+            local platform_key="$1"
+            local artifact_dir="$2"
+            local sig_pattern="$3"
+            local bundle_pattern="$4"
+
+            if [ ! -d "$artifact_dir" ]; then
+              echo "Skipping $platform_key: $artifact_dir not found"
+              return
+            fi
+
+            local sig_file bundle_file
+            sig_file=$(find "$artifact_dir" -name "$sig_pattern" 2>/dev/null | head -1)
+            bundle_file=$(find "$artifact_dir" -name "$bundle_pattern" ! -name "*.sig" 2>/dev/null | head -1)
+
+            if [ -n "$sig_file" ] && [ -n "$bundle_file" ]; then
+              local sig name
+              sig=$(cat "$sig_file")
+              name=$(basename "$bundle_file")
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$sig" --arg url "${BASE_URL}/${name}" ". + {\"${platform_key}\": {\"signature\": \$sig, \"url\": \$url}}")
+              echo "Added $platform_key: $name"
             else
-              echo ""
+              echo "Skipping $platform_key: sig=$sig_file bundle=$bundle_file"
             fi
           }
 
-          # Find updater bundle filenames
-          find_bundle() {
-            local pattern="$1"
-            find memoryport-* -name "$pattern" ! -name "*.sig" 2>/dev/null | head -1 | xargs -I{} basename {} 2>/dev/null || echo ""
-          }
+          add_platform "darwin-aarch64" "memoryport-aarch64-apple-darwin" "*.app.tar.gz.sig" "*.app.tar.gz"
+          add_platform "darwin-x86_64"  "memoryport-x86_64-apple-darwin"  "*.app.tar.gz.sig" "*.app.tar.gz"
+          add_platform "linux-x86_64"   "memoryport-x86_64-unknown-linux-gnu" "*.AppImage.tar.gz.sig" "*.AppImage.tar.gz"
+          add_platform "windows-x86_64" "memoryport-x86_64-pc-windows-msvc"   "*.nsis.zip.sig" "*.nsis.zip"
 
-          MACOS_AARCH64_BUNDLE=$(find_bundle "*.app.tar.gz" | head -1)
-          MACOS_AARCH64_SIG=$(read_sig "*.app.tar.gz.sig" | head -1)
-
-          # Build platforms JSON
-          PLATFORMS="{}"
-
-          # macOS aarch64
-          SIG_FILE=$(find memoryport-aarch64-apple-darwin -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
-          BUNDLE_FILE=$(find memoryport-aarch64-apple-darwin -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
-          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
-            SIG=$(cat "$SIG_FILE")
-            NAME=$(basename "$BUNDLE_FILE")
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"darwin-aarch64": {"signature": $sig, "url": $url}}')
-          fi
-
-          # macOS x86_64
-          SIG_FILE=$(find memoryport-x86_64-apple-darwin -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
-          BUNDLE_FILE=$(find memoryport-x86_64-apple-darwin -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
-          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
-            SIG=$(cat "$SIG_FILE")
-            NAME=$(basename "$BUNDLE_FILE")
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"darwin-x86_64": {"signature": $sig, "url": $url}}')
-          fi
-
-          # Linux x86_64
-          SIG_FILE=$(find memoryport-x86_64-unknown-linux-gnu -name "*.AppImage.tar.gz.sig" 2>/dev/null | head -1)
-          BUNDLE_FILE=$(find memoryport-x86_64-unknown-linux-gnu -name "*.AppImage.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
-          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
-            SIG=$(cat "$SIG_FILE")
-            NAME=$(basename "$BUNDLE_FILE")
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"linux-x86_64": {"signature": $sig, "url": $url}}')
-          fi
-
-          # Windows x86_64
-          SIG_FILE=$(find memoryport-x86_64-pc-windows-msvc -name "*.nsis.zip.sig" 2>/dev/null | head -1)
-          BUNDLE_FILE=$(find memoryport-x86_64-pc-windows-msvc -name "*.nsis.zip" ! -name "*.sig" 2>/dev/null | head -1)
-          if [ -n "$SIG_FILE" ] && [ -n "$BUNDLE_FILE" ]; then
-            SIG=$(cat "$SIG_FILE")
-            NAME=$(basename "$BUNDLE_FILE")
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "${BASE_URL}/${NAME}" '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
-          fi
-
+          set -e  # Re-enable for the final jq call
           jq -n \
             --arg version "$VERSION" \
             --arg notes "Release ${TAG}" \
