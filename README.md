@@ -261,6 +261,22 @@ For context, GPT-4o with naive RAG scores 30-70% on this benchmark.
 
 Tested with `nomic-embed-text` (768d, local via Ollama). No cloud APIs required.
 
+### Scale Benchmark (70M tokens / 187K chunks)
+
+![Performance Chart](tests/scale/performance_chart.png)
+
+After compaction optimization (merging fragmented Lance files):
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| p50 latency | 1,962ms | **104ms** | **19x faster** |
+| p95 latency | 2,121ms | **112ms** | **19x faster** |
+| mean | 1,885ms | **104ms** | **18x faster** |
+
+Context space: 70M tokens (~187K chunks, 768d embeddings, nomic-embed-text). Brute-force search with 100% recall — no approximate indexing needed at this scale.
+
+Auto-compaction runs every 100 inserts and on startup to prevent fragment buildup.
+
 ### Stress Test (10K chunks)
 
 | Metric | Result |
@@ -306,4 +322,4 @@ python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://1
 
 ## License
 
-MIT OR Apache-2.0
+Apache-2.0
