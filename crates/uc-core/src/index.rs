@@ -56,6 +56,7 @@ pub struct Index {
     table: lancedb::Table,
     dimensions: usize,
     last_checkout: std::sync::atomic::AtomicU64,
+    insert_count: std::sync::atomic::AtomicU32,
 }
 
 impl Index {
@@ -103,41 +104,27 @@ impl Index {
             .execute()
             .await;
 
-        // Build IVF-PQ vector index in the background (non-blocking).
-        // Without it, search still works (brute-force). The ANN index accelerates
-        // queries once the background build finishes.
+        // Compact fragmented data on startup if needed.
+        // Each insert creates a new fragment; too many fragments degrades query performance.
         let row_count = table.count_rows(None).await.unwrap_or(0);
-        if row_count >= 10_000 {
+        if row_count > 0 {
             let bg_table = table.clone();
-            let bg_dims = dimensions;
             tokio::spawn(async move {
-                let num_partitions = ((row_count as f64).sqrt() as u32).max(16).min(1024);
-                tracing::info!(partitions = num_partitions, rows = row_count, "building IVF-PQ vector index in background");
-                match bg_table
-                    .create_index(
-                        &["vector"],
-                        lancedb::index::Index::IvfPq(
-                            lancedb::index::vector::IvfPqIndexBuilder::default()
-                                .num_partitions(num_partitions)
-                                .num_sub_vectors((bg_dims / 16) as u32)
-                        ),
-                    )
-                    .execute()
-                    .await
-                {
-                    Ok(_) => tracing::info!("IVF-PQ vector index built successfully"),
-                    Err(e) => tracing::warn!(error = %e, "IVF-PQ index build failed (search still works without it)"),
+                match bg_table.optimize(lancedb::table::OptimizeAction::All).await {
+                    Ok(_) => tracing::info!("compaction complete"),
+                    Err(e) => tracing::warn!(error = %e, "compaction failed (non-fatal)"),
                 }
             });
         }
 
-        debug!(path = %db_path_str, dimensions, "opened LanceDB index");
+        debug!(path = %db_path_str, dimensions, rows = row_count, "opened LanceDB index");
 
         Ok(Self {
             db,
             table,
             dimensions,
             last_checkout: std::sync::atomic::AtomicU64::new(0),
+            insert_count: std::sync::atomic::AtomicU32::new(0),
         })
     }
 
@@ -157,7 +144,19 @@ impl Index {
         let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
         self.table.add(batches).execute().await?;
 
-        debug!(count = entries.len(), "inserted chunks into index");
+        let count = self.insert_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        debug!(count = entries.len(), inserts = count, "inserted chunks into index");
+
+        // Auto-compact every 100 inserts to prevent fragment buildup
+        if count % 100 == 0 {
+            let bg_table = self.table.clone();
+            tokio::spawn(async move {
+                match bg_table.optimize(lancedb::table::OptimizeAction::All).await {
+                    Ok(_) => tracing::debug!("periodic compaction complete"),
+                    Err(e) => tracing::warn!(error = %e, "periodic compaction failed"),
+                }
+            });
+        }
 
         Ok(())
     }
@@ -184,9 +183,12 @@ impl Index {
         let results: Vec<RecordBatch> = self.table
             .query()
             .nearest_to(query_vector)?
-            .nprobes(20) // IVF-PQ: search 20 partitions (balance recall vs speed)
             .only_if(filter)
             .limit(params.top_k)
+            .select(lancedb::query::Select::columns(&[
+                "chunk_id", "session_id", "chunk_type", "role",
+                "timestamp", "content", "arweave_tx_id",
+            ]))
             .execute()
             .await?
             .try_collect()
