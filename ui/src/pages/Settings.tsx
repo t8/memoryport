@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getSettings, updateSettings, restartServer, type SettingsData } from "../lib/api";
 import Toggle from "../components/Toggle";
 import Tooltip from "../components/Tooltip";
-import { Save, Check, RotateCw } from "lucide-react";
+import { Save, Check, RotateCw, ChevronDown } from "lucide-react";
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null);
@@ -71,198 +71,214 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-8 max-w-3xl space-y-8">
-      <div className="flex items-center justify-between">
+    <div>
+      {/* Header */}
+      <div className="px-8 pt-6 flex items-start justify-between">
         <div>
-          <h2 className="font-display uppercase text-cream text-2xl tracking-wide">Settings</h2>
-          <p className="text-cream-muted text-sm mt-1">
+          <h2 className="font-medium uppercase text-cream text-[32px] leading-[1.4]">
+            Settings
+          </h2>
+          <p className="text-cream-muted text-base mt-2">
             Configure your Memoryport instance
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4 mt-2">
           <button
             onClick={handleRestart}
             disabled={restarting}
-            className="flex items-center gap-2 px-4 py-2 border border-border bg-bg hover:bg-surface disabled:opacity-50 text-sm font-medium transition-colors text-cream"
+            className="flex items-center gap-2 h-12 px-6 border border-border bg-bg hover:bg-surface disabled:opacity-50 text-sm font-medium transition-colors text-cream"
           >
-            <RotateCw size={16} className={restarting ? "animate-spin" : ""} />
-            {restarting ? "Restarting..." : "Restart Server"}
+            <RotateCw size={18} className={restarting ? "animate-spin" : ""} />
+            {restarting ? "Restarting..." : "Restart server"}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-cream text-bg hover:bg-cream/90 disabled:opacity-50 text-sm font-medium transition-colors"
+            className="flex items-center gap-2 h-12 px-6 border border-border bg-bg hover:bg-surface disabled:opacity-50 text-sm font-medium transition-colors text-cream"
           >
-            {saved ? <Check size={16} /> : <Save size={16} />}
-            {saved ? "Saved" : "Save Changes"}
+            {saved ? <Check size={18} /> : <Save size={18} />}
+            {saved ? "Saved" : "Save changes"}
           </button>
         </div>
       </div>
 
-      {/* Embeddings */}
-      <section className="border border-border bg-bg p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium text-cream">Embedding Provider</h3>
-          <Tooltip content="Embeddings convert text into numbers so Memoryport can find semantically similar content. This is the engine behind search and context retrieval." />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-cream-dim font-mono mb-1">Provider</label>
-            <select
-              value={settings.embeddings.provider}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  embeddings: { ...settings.embeddings, provider: e.target.value },
-                })
-              }
-              className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream focus:outline-none focus:border-border-hover"
-            >
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Ollama</option>
-            </select>
+      <div className="px-8 mt-6 space-y-6 pb-8">
+        {/* Embeddings */}
+        <section className="border border-border bg-bg p-6 space-y-6">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xl font-semibold text-cream">Embedding Provider</h3>
+            <Tooltip content="Embeddings convert text into numbers so Memoryport can find semantically similar content. This is the engine behind search and context retrieval." />
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm text-cream-muted mb-2">Provider</label>
+              <div className="relative">
+                <select
+                  value={settings.embeddings.provider}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      embeddings: { ...settings.embeddings, provider: e.target.value },
+                    })
+                  }
+                  className="w-full h-12 px-3 bg-surface border border-border text-sm text-cream focus:outline-none focus:border-border-hover appearance-none"
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="ollama">Ollama</option>
+                </select>
+                <ChevronDown size={20} className="absolute right-3 top-1/2 -translate-y-1/2 text-cream-dim pointer-events-none" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-cream-muted mb-2">Model</label>
+              <input
+                type="text"
+                value={settings.embeddings.model}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    embeddings: { ...settings.embeddings, model: e.target.value },
+                  })
+                }
+                className="w-full h-12 px-3 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
+              />
+            </div>
           </div>
           <div>
-            <label className="block text-xs text-cream-dim font-mono mb-1">Model</label>
+            <label className="block text-sm text-cream-muted mb-2">API Key</label>
             <input
-              type="text"
-              value={settings.embeddings.model}
+              type="password"
+              value={settings.embeddings.api_key || ""}
               onChange={(e) =>
                 setSettings({
                   ...settings,
-                  embeddings: { ...settings.embeddings, model: e.target.value },
+                  embeddings: { ...settings.embeddings, api_key: e.target.value || null },
                 })
               }
-              className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
+              placeholder={
+                settings.embeddings.provider === "ollama"
+                  ? "Not required for Ollama"
+                  : "sk-... (or set OPENAI_API_KEY)"
+              }
+              className="w-full h-12 px-3 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
             />
           </div>
-        </div>
-        <div>
-          <label className="block text-xs text-cream-dim font-mono mb-1">
-            API Key {settings.embeddings.provider === "ollama" && "(not needed for Ollama)"}
-          </label>
-          <input
-            type="password"
-            value={settings.embeddings.api_key || ""}
-            onChange={(e) =>
-              setSettings({
-                ...settings,
-                embeddings: { ...settings.embeddings, api_key: e.target.value || null },
-              })
-            }
-            placeholder={settings.embeddings.provider === "openai" ? "sk-... (or set OPENAI_API_KEY)" : "Not required"}
-            className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
-          />
-        </div>
-      </section>
+        </section>
 
-      {/* Retrieval */}
-      <section className="border border-border bg-bg p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium text-cream">Retrieval</h3>
-          <Tooltip content="Controls how Memoryport decides what context to surface. Smart gating prevents unnecessary searches on simple messages like greetings or commands." />
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-cream">Smart Gating</p>
-            <p className="text-xs text-cream-dim">Skip retrieval for greetings, commands, and short queries</p>
+        {/* Retrieval */}
+        <section className="border border-border bg-bg p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <h3 className="text-xl font-semibold text-cream">Retrieval</h3>
+            <Tooltip content="Controls how Memoryport decides what context to surface. Smart gating prevents unnecessary searches on simple messages." />
           </div>
-          <Toggle
-            enabled={settings.retrieval.gating_enabled}
-            onChange={(v) =>
-              setSettings({
-                ...settings,
-                retrieval: { ...settings.retrieval, gating_enabled: v },
-              })
-            }
-          />
-        </div>
-      </section>
-
-      {/* Proxy */}
-      <section className="border border-border bg-bg p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium text-cream">Proxy</h3>
-          <Tooltip content="The proxy sits between your editor and the AI provider, injecting relevant context and capturing conversations automatically." />
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-cream">Multi-turn Retrieval</p>
-            <p className="text-xs text-cream-dim">Let the LLM iteratively query memory with tool calls before responding</p>
-          </div>
-          <Toggle
-            enabled={settings.proxy?.agentic_enabled ?? true}
-            onChange={(v) =>
-              setSettings({
-                ...settings,
-                proxy: { ...settings.proxy, agentic_enabled: v },
-              })
-            }
-          />
-        </div>
-      </section>
-
-      {/* Arweave */}
-      <section className="border border-border bg-bg p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium text-cream">Arweave Storage</h3>
-          <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.ai includes Turbo credits for uploads. Without an API key, memories are stored locally only." />
-        </div>
-        <div>
-          <label className="block text-xs text-cream-dim font-mono mb-1">API Key</label>
-          <input
-            type="password"
-            value={settings.arweave.api_key || ""}
-            onChange={(e) =>
-              setSettings({
-                ...settings,
-                arweave: { ...settings.arweave, api_key: e.target.value || null },
-              })
-            }
-            placeholder="uc_... (from memoryport.ai/dashboard)"
-            className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
-          />
-          <p className="text-xs text-cream-dim mt-1">
-            Get a key at{" "}
-            <a href="https://memoryport.ai/dashboard" target="_blank" rel="noopener" className="text-cream-muted hover:text-cream underline">
-              memoryport.ai
-            </a>
-            {" "}— or set UC_API_KEY env var
-          </p>
-        </div>
-        {settings.arweave.address && (
-          <div>
-            <label className="block text-xs text-cream-dim font-mono mb-1">Arweave Address</label>
-            <div className="px-3 py-2 bg-surface border border-border text-sm text-cream-muted font-mono truncate">
-              {settings.arweave.address}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-base font-semibold text-cream">Smart Gating</p>
+              <p className="text-sm text-cream-muted mt-1">
+                Skip retrieval for greetings, commands, and short queries
+              </p>
             </div>
-            <p className="text-xs text-cream-dim mt-1">Auto-generated signing key for Arweave uploads</p>
+            <Toggle
+              enabled={settings.retrieval.gating_enabled}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  retrieval: { ...settings.retrieval, gating_enabled: v },
+                })
+              }
+            />
           </div>
-        )}
-      </section>
+        </section>
 
-      {/* Encryption */}
-      <section className="border border-border bg-bg p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium text-cream">Encryption</h3>
-          <Tooltip content="When enabled, all data uploaded to Arweave is encrypted with AES-256-GCM. Each batch gets a unique key. You can logically delete data by destroying its encryption key." />
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-cream">Encrypt at rest</p>
-            <p className="text-xs text-cream-dim">AES-256-GCM encryption for all Arweave uploads</p>
+        {/* Proxy */}
+        <section className="border border-border bg-bg p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <h3 className="text-xl font-semibold text-cream">Proxy</h3>
+            <Tooltip content="The proxy sits between your editor and the AI provider, injecting relevant context and capturing conversations automatically." />
           </div>
-          <Toggle
-            enabled={settings.encryption.enabled}
-            onChange={(v) =>
-              setSettings({
-                ...settings,
-                encryption: { ...settings.encryption, enabled: v },
-              })
-            }
-          />
-        </div>
-      </section>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-base font-semibold text-cream">Multi-turn Retrieval</p>
+              <p className="text-sm text-cream-muted mt-1">
+                Let the LLM iteratively query memory with tool calls before responding
+              </p>
+            </div>
+            <Toggle
+              enabled={settings.proxy?.agentic_enabled ?? true}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  proxy: { ...settings.proxy, agentic_enabled: v },
+                })
+              }
+            />
+          </div>
+        </section>
+
+        {/* Arweave */}
+        <section className="border border-border bg-bg p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xl font-semibold text-cream">Arweave Storage</h3>
+            <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.ai includes Turbo credits for uploads." />
+          </div>
+          <div>
+            <label className="block text-sm text-cream-muted mb-2">API Key</label>
+            <input
+              type="password"
+              value={settings.arweave.api_key || ""}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  arweave: { ...settings.arweave, api_key: e.target.value || null },
+                })
+              }
+              placeholder="ex. uc_xxxx..."
+              className="w-full h-12 px-3 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
+            />
+            <p className="text-sm text-cream-dim mt-2">
+              Get a key at{" "}
+              <a href="https://memoryport.ai" target="_blank" rel="noopener" className="text-cream-muted hover:text-cream underline">
+                memoryport.ai
+              </a>
+              {" "}&ndash; or set UC_API_KEY env var
+            </p>
+          </div>
+          {settings.arweave.address && (
+            <div>
+              <label className="block text-sm text-cream-muted mb-2">Arweave Address</label>
+              <div className="h-12 flex items-center px-3 bg-surface border border-border text-sm text-cream-muted font-mono truncate">
+                {settings.arweave.address}
+              </div>
+              <p className="text-sm text-cream-dim mt-2">Auto-generated signing key for Arweave uploads</p>
+            </div>
+          )}
+        </section>
+
+        {/* Encryption */}
+        <section className="border border-border bg-bg p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <h3 className="text-xl font-semibold text-cream">Encryption</h3>
+            <Tooltip content="When enabled, all data uploaded to Arweave is encrypted with AES-256-GCM. Each batch gets a unique key." />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-base font-semibold text-cream">Encrypt at rest</p>
+              <p className="text-sm text-cream-muted mt-1">
+                AES-256-GCM encryption for all Arweave uploads
+              </p>
+            </div>
+            <Toggle
+              enabled={settings.encryption.enabled}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  encryption: { ...settings.encryption, enabled: v },
+                })
+              }
+            />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

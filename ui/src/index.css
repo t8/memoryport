@@ -26,13 +26,13 @@
 
 @theme {
   --color-bg: #0d0d0d;
-  --color-surface: #1a1a1a;
-  --color-surface-hover: #222222;
-  --color-border: rgba(255, 244, 224, 0.12);
-  --color-border-hover: rgba(255, 244, 224, 0.25);
+  --color-surface: #252525;
+  --color-surface-hover: #2d2d2d;
+  --color-border: rgba(255, 244, 224, 0.5);
+  --color-border-hover: rgba(255, 244, 224, 0.7);
   --color-cream: #fff4e0;
-  --color-cream-muted: rgba(255, 244, 224, 0.5);
-  --color-cream-dim: rgba(255, 244, 224, 0.3);
+  --color-cream-muted: rgba(255, 244, 224, 0.7);
+  --color-cream-dim: rgba(255, 244, 224, 0.5);
   --color-accent: #84cc16;
   --color-error: #ef4444;
   --font-sans: "Switzer", "Inter", system-ui, -apple-system, sans-serif;

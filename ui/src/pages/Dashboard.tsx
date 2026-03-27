@@ -62,28 +62,33 @@ export default function Dashboard() {
 
   // Dashboard view
   return (
-    <div className="p-8 max-w-5xl">
-      <h2 className="font-display uppercase text-cream text-2xl tracking-wide">Dashboard</h2>
-      <p className="text-cream-muted text-sm mt-1">Your memory at a glance</p>
+    <div>
+      {/* Header */}
+      <div className="px-8 pt-6 pb-0">
+        <h2 className="font-medium uppercase text-cream text-[32px] leading-[1.4]">
+          Dashboard
+        </h2>
+        <p className="text-cream-muted text-base mt-2">Your memory at a glance.</p>
+      </div>
 
       {/* Status cards */}
-      <div className="grid grid-cols-3 gap-4 mt-6">
+      <div className="grid grid-cols-3 gap-6 px-8 mt-6">
         <StatusCard
-          label="Indexed Chunks"
+          label="Indexed chunks"
           value={status?.indexed_chunks ?? "—"}
         />
         <StatusCard label="Sessions" value={sessions.length} />
         <StatusCard
-          label="Embedding Model"
+          label="Embedding model"
           value={status?.embedding_model ?? "—"}
           detail={status ? `${status.embedding_dimensions}d` : undefined}
         />
       </div>
 
       {/* Search */}
-      <div className="mt-8">
-        <h3 className="text-sm text-cream-dim uppercase tracking-wider font-mono mb-2">
-          Search Memory
+      <div className="px-8 mt-10">
+        <h3 className="text-lg font-semibold text-cream mb-4">
+          Search memories
         </h3>
         <SearchBar
           onResults={(results, query) => {
@@ -95,7 +100,7 @@ export default function Dashboard() {
 
       {/* Search results */}
       {searchResults && (
-        <div className="mt-4">
+        <div className="px-8 mt-4">
           <button
             onClick={() => {
               setSearchResults(null);
@@ -108,26 +113,26 @@ export default function Dashboard() {
           {searchResults.length === 0 ? (
             <p className="text-sm text-cream-muted">No results found.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {searchResults.map((r) => (
                 <div
                   key={r.chunk_id}
-                  className="border border-border bg-surface p-3"
+                  className="border border-border bg-bg p-6"
                 >
-                  <div className="flex items-center gap-2 text-xs text-cream-dim">
+                  <div className="flex items-center gap-2 text-sm text-cream-dim">
                     <span className="font-mono">{r.score.toFixed(3)}</span>
-                    <span>·</span>
+                    <span>&bull;</span>
                     <span>{r.session_id}</span>
-                    <span>·</span>
+                    <span>&bull;</span>
                     <span>{r.chunk_type}</span>
                     {r.role && (
                       <>
-                        <span>·</span>
+                        <span>&bull;</span>
                         <span>{r.role}</span>
                       </>
                     )}
                   </div>
-                  <p className="text-sm text-cream-muted mt-1 line-clamp-3">
+                  <p className="text-sm text-cream-muted mt-2 line-clamp-3">
                     <Highlight text={r.content} query={searchQuery} />
                   </p>
                 </div>
@@ -139,9 +144,9 @@ export default function Dashboard() {
 
       {/* Sessions */}
       {!searchResults && (
-        <div className="mt-8">
-          <h3 className="text-sm text-cream-dim uppercase tracking-wider font-mono mb-2">
-            Recent Sessions
+        <div className="px-8 mt-10 pb-8">
+          <h3 className="text-lg font-semibold text-cream mb-4">
+            Recent sessions
           </h3>
           <SessionList sessions={sessions} onSelect={openSession} />
         </div>

@@ -5,11 +5,20 @@ interface StatusCardProps {
 }
 
 export default function StatusCard({ label, value, detail }: StatusCardProps) {
+  const isNumeric = typeof value === "number" || /^[\d,]+$/.test(String(value));
   return (
-    <div className="border border-border bg-bg p-4">
-      <p className="text-xs text-cream-dim uppercase tracking-wider font-mono">{label}</p>
-      <p className="text-2xl font-semibold text-cream mt-1">{value}</p>
-      {detail && <p className="text-xs text-cream-dim mt-1">{detail}</p>}
+    <div className="border border-border bg-bg p-6">
+      <p className="text-base text-cream">{label}</p>
+      <p
+        className={`text-cream mt-1 ${
+          isNumeric
+            ? "font-display text-[48px] leading-tight"
+            : "text-2xl font-semibold leading-snug"
+        }`}
+      >
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </p>
+      {detail && <p className="text-sm text-cream-dim mt-1">{detail}</p>}
     </div>
   );
 }

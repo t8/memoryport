@@ -40,16 +40,16 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-surface rounded transition-colors"
+        className="w-full flex items-center gap-3 px-6 py-1.5 text-sm hover:bg-surface transition-colors"
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_COLORS[info.status] || "bg-cream-dim"}`} />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[info.status] || "bg-cream-dim"}`} />
         <span className="text-cream-muted capitalize flex-1 text-left">{info.name}</span>
-        <span className="text-cream-dim text-[10px] font-mono">
+        <span className="text-cream-dim text-xs font-mono">
           {STATUS_LABELS[info.status] || info.status}
         </span>
       </button>
       {expanded && (
-        <div className="ml-5 px-2 py-1 text-[10px] text-cream-dim space-y-0.5">
+        <div className="ml-11 pr-6 py-1 text-xs text-cream-dim space-y-1">
           {info.uptime_secs != null && (
             <p>Uptime: {formatUptime(info.uptime_secs)}</p>
           )}
@@ -61,9 +61,9 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
             <button
               onClick={handleRestart}
               disabled={restarting}
-              className="flex items-center gap-1 text-cream-dim hover:text-cream mt-1"
+              className="flex items-center gap-1.5 text-cream-dim hover:text-cream mt-1"
             >
-              <RotateCw size={10} className={restarting ? "animate-spin" : ""} />
+              <RotateCw size={12} className={restarting ? "animate-spin" : ""} />
               {restarting ? "Restarting..." : "Restart"}
             </button>
           )}
@@ -87,8 +87,8 @@ export default function ServiceStatus() {
   const services = [health.engine, health.proxy, health.mcp, health.ollama];
 
   return (
-    <div className="px-3 py-2 border-t border-border">
-      <p className="px-2 text-[10px] text-cream-dim uppercase tracking-wider font-mono mb-1">
+    <div className="py-3">
+      <p className="px-6 text-xs text-cream-dim uppercase tracking-wider mb-2">
         Services
       </p>
       <div className="space-y-0.5">
