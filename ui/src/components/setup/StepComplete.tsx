@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { writeInitialConfig, initEngine, startServices } from "../../lib/api";
+import { writeInitialConfig, initEngine, startServices, getServiceHealth } from "../../lib/api";
 import { setTelemetryEnabled, events } from "../../lib/telemetry";
 import { Check, Loader2, AlertTriangle } from "lucide-react";
 
@@ -52,10 +52,19 @@ export default function StepComplete({
         await initEngine();
       }
 
-      // Step 3: Start services
+      // Step 3: Start services and wait for health
       setStatus("services");
       setFailedAt(null);
       await startServices();
+
+      // Poll until engine is healthy (up to 15 seconds)
+      for (let i = 0; i < 15; i++) {
+        try {
+          const health = await getServiceHealth();
+          if (health.engine.status === "running") break;
+        } catch { /* ignore */ }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
 
       setStatus("done");
       events.setupCompleted(provider);

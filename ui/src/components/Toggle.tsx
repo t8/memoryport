@@ -1,11 +1,12 @@
 interface ToggleProps {
   enabled: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }
 
-export default function Toggle({ enabled, onChange }: ToggleProps) {
+export default function Toggle({ enabled, onChange, disabled }: ToggleProps) {
   return (
-    <div className="flex items-center gap-2">
+    <div className={`flex items-center gap-2 ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
       <span className={`text-sm font-mono ${enabled ? "text-accent" : "text-cream-dim"}`}>
         {enabled ? "Active" : "Off"}
       </span>
@@ -13,6 +14,7 @@ export default function Toggle({ enabled, onChange }: ToggleProps) {
         type="button"
         role="switch"
         aria-checked={enabled}
+        disabled={disabled}
         onClick={() => onChange(!enabled)}
         className={`relative inline-flex h-[30px] w-14 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ${
           enabled ? "bg-accent" : "bg-cream-dim"

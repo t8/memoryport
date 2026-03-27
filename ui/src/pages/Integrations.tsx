@@ -61,6 +61,11 @@ export default function Integrations() {
     getIntegrations().then(setIntegrations).catch(console.error);
   }, []);
 
+  // Re-fetch integration state when service health changes (e.g. after Stop All)
+  useEffect(() => {
+    getIntegrations().then(setIntegrations).catch(console.error);
+  }, [health]);
+
   async function handleToggle(integration: string, enabled: boolean) {
     setToggling(integration);
     setMessage(null);
@@ -231,13 +236,20 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">Ollama Auto-Capture</h3>
-                  <StatusBadge status={health.ollama.status} />
+                  {proxyEnabled ? (
+                    <StatusBadge status={health.ollama.status} />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded text-cream-dim bg-[rgba(255,244,224,0.05)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cream-dim" />
+                      Needs proxy
+                    </span>
+                  )}
                   <Tooltip content="Captures conversations with local Ollama models. Works with Open WebUI, Continue.dev, terminal, and API clients." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
-                  {ollamaEnabled
+                  {proxyEnabled
                     ? "Capturing Ollama conversations via Open WebUI, Continue.dev, terminal, and API clients"
-                    : "Memory capture for local Ollama models (Open WebUI, Continue.dev, terminal, API)"}
+                    : "Enable the API Proxy above to capture Ollama conversations"}
                 </p>
                 <div className="flex items-center gap-2 mt-3 flex-wrap">
                   <span className="text-xs text-cream-dim">Works with:</span>
@@ -246,16 +258,12 @@ export default function Integrations() {
                   <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Ollama CLI</span>
                   <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any Ollama client</span>
                 </div>
-                {health.ollama.status !== "running" && ollamaEnabled && <ServiceOfflineWarning />}
+                {health.ollama.status !== "running" && proxyEnabled && <ServiceOfflineWarning />}
               </div>
             </div>
-            <div className="shrink-0 ml-4">
-              {toggling === "ollama" ? (
-                <Loader2 size={20} className="animate-spin text-cream-dim" />
-              ) : (
-                <Toggle enabled={ollamaEnabled} onChange={(v) => handleToggle("ollama", v)} />
-              )}
-            </div>
+            <span className="text-sm font-mono text-cream-dim shrink-0 ml-4">
+              {proxyEnabled ? "Active" : "Off"}
+            </span>
           </div>
         </div>
 

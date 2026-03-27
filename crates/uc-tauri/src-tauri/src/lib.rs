@@ -64,13 +64,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppEngine(Arc::new(RwLock::new(engine))))
         .manage(AppRuntime(rt))
         .manage(AppConfigPath(config_path))
         .manage(AppServices(Arc::new(RwLock::new(None))))
         .setup(move |app| {
-            let handle = app.handle().clone();
-            let svc = ServiceManager::new(handle);
+            let cfg_path = app.state::<AppConfigPath>().0.clone();
+            let svc = ServiceManager::new(cfg_path);
 
             let app_services = app.state::<AppServices>();
             let services_lock = app_services.0.clone();
@@ -93,6 +94,21 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let app = window.app_handle().clone();
+                let services = app.state::<AppServices>().0.clone();
+                // Stop services and restore proxy on close
+                tauri::async_runtime::block_on(async {
+                    let guard = services.read().await;
+                    if let Some(ref svc) = *guard {
+                        svc.stop_all().await;
+                    }
+                    drop(guard);
+                    let _ = commands::unregister_proxy().await;
+                });
+            }
         })
         .invoke_handler(tauri::generate_handler![
             // Data commands
@@ -124,6 +140,10 @@ pub fn run() {
             commands::register_proxy,
             commands::unregister_proxy,
             commands::rebuild_from_arweave,
+            commands::reset_all_data,
+            commands::validate_api_key,
+            commands::import_wallet,
+            commands::export_wallet,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Memoryport");

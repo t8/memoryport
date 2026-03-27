@@ -8,6 +8,7 @@ import {
 } from "./NavIcons";
 import Logo from "./Logo";
 import ServiceStatus from "./ServiceStatus";
+import UpdateBadge from "./UpdateBadge";
 
 const navItems = [
   { to: "/", icon: LayoutAlt02, label: "Dashboard" },
@@ -58,8 +59,9 @@ export default function Layout() {
           <ServiceStatus />
 
           {/* Version */}
-          <div className="px-6 py-4 text-sm text-cream-dim font-mono">
-            v 0.1.0
+          <div className="px-6 py-4 flex items-center gap-2">
+            <span className="text-sm text-cream-dim font-mono">v 0.1.1</span>
+            <UpdateBadge />
           </div>
         </div>
       </nav>

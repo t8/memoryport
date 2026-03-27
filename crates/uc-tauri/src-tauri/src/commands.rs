@@ -331,15 +331,28 @@ pub struct ToggleResponse {
 #[tauri::command]
 pub async fn get_integrations() -> Result<IntegrationsStatus, String> {
     let claude_json = dirs::home_dir().unwrap_or_default().join(".claude.json");
-    let mcp_registered = claude_json.exists()
-        && std::fs::read_to_string(&claude_json)
-            .map(|c| c.contains("memoryport") || c.contains("uc-mcp"))
-            .unwrap_or(false);
 
-    let proxy_configured = claude_json.exists()
-        && std::fs::read_to_string(&claude_json)
-            .map(|c| c.contains("ANTHROPIC_BASE_URL"))
-            .unwrap_or(false);
+    // Parse structurally instead of string searching
+    let claude_data: Option<serde_json::Value> = claude_json
+        .exists()
+        .then(|| std::fs::read_to_string(&claude_json).ok())
+        .flatten()
+        .and_then(|c| serde_json::from_str(&c).ok());
+
+    let mcp_registered = claude_data
+        .as_ref()
+        .and_then(|d| d.get("mcpServers"))
+        .and_then(|s| s.as_object())
+        .map(|servers| servers.contains_key("memoryport"))
+        .unwrap_or(false);
+
+    let proxy_configured = claude_data
+        .as_ref()
+        .and_then(|d| d.get("env"))
+        .and_then(|e| e.get("ANTHROPIC_BASE_URL"))
+        .and_then(|v| v.as_str())
+        .map(|url| url.contains("9191"))
+        .unwrap_or(false);
 
     let wallet_exists = dirs::home_dir()
         .unwrap_or_default()
@@ -364,8 +377,8 @@ pub async fn get_integrations() -> Result<IntegrationsStatus, String> {
             },
         },
         ollama: IntegrationEntry {
-            enabled: false,
-            status: "via proxy".into(),
+            enabled: proxy_configured,
+            status: if proxy_configured { "operational".into() } else { "needs proxy".into() },
         },
         arweave: IntegrationEntry {
             enabled: wallet_exists,
@@ -380,17 +393,75 @@ pub async fn get_integrations() -> Result<IntegrationsStatus, String> {
 
 #[tauri::command]
 pub async fn toggle_integration(
+    services: State<'_, AppServices>,
     integration: String,
     enabled: bool,
 ) -> Result<ToggleResponse, String> {
-    Ok(ToggleResponse {
-        success: true,
-        message: format!(
-            "{} {} — restart the app for changes to take effect",
-            integration,
-            if enabled { "enabled" } else { "disabled" }
-        ),
-    })
+    match integration.as_str() {
+        "mcp" => {
+            if enabled {
+                register_mcp().await?;
+                Ok(ToggleResponse {
+                    success: true,
+                    message: "MCP server registered — restart your editor to activate".into(),
+                })
+            } else {
+                // Unregister MCP from ~/.claude.json and ~/.cursor/mcp.json
+                for path in &[
+                    dirs::home_dir().map(|h| h.join(".claude.json")),
+                    dirs::home_dir().map(|h| h.join(".cursor/mcp.json")),
+                ] {
+                    if let Some(ref p) = path {
+                        if p.exists() {
+                            if let Ok(content) = std::fs::read_to_string(p) {
+                                if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                                    if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+                                        servers.remove("memoryport");
+                                    }
+                                    let _ = std::fs::write(p, serde_json::to_string_pretty(&data).unwrap_or_default());
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(ToggleResponse {
+                    success: true,
+                    message: "MCP server unregistered — restart your editor to take effect".into(),
+                })
+            }
+        }
+        "proxy" => {
+            if enabled {
+                // Start proxy process + register URL
+                let svc_guard = services.0.read().await;
+                if let Some(ref svc) = *svc_guard {
+                    svc.start_proxy().await;
+                }
+                drop(svc_guard);
+                register_proxy().await?;
+                Ok(ToggleResponse {
+                    success: true,
+                    message: "Proxy started and configured — restart your editor to activate".into(),
+                })
+            } else {
+                // Kill proxy process + unregister URL
+                let svc_guard = services.0.read().await;
+                if let Some(ref svc) = *svc_guard {
+                    svc.stop_proxy().await;
+                }
+                drop(svc_guard);
+                unregister_proxy().await?;
+                Ok(ToggleResponse {
+                    success: true,
+                    message: "Proxy stopped and disabled — original API URL restored".into(),
+                })
+            }
+        }
+        _ => Ok(ToggleResponse {
+            success: true,
+            message: format!("{} {}", integration, if enabled { "enabled" } else { "disabled" }),
+        }),
+    }
 }
 
 // ── Settings ──
@@ -484,19 +555,44 @@ pub async fn get_settings(
         proxy: Some(ProxySettings {
             agentic_enabled: config.proxy.agentic.enabled,
         }),
-        arweave: ArweaveSettings {
-            gateway: config.arweave.gateway.clone(),
-            wallet_path: config.arweave.wallet_path.clone(),
-            api_key: if has_api_key {
-                Some("••••••••".into())
+        arweave: {
+            // If API key exists, validate it to get storage stats
+            let (storage_used, storage_limit) = if let Some(ref key) = config.resolved_api_key() {
+                match reqwest::Client::new()
+                    .post("https://memoryport.ai/api/validate")
+                    .header("X-API-Key", key.as_str())
+                    .json(&serde_json::json!({"wallet_address": "pending"}))
+                    .timeout(std::time::Duration::from_secs(5))
+                    .send()
+                    .await
+                {
+                    Ok(resp) if resp.status().is_success() => {
+                        let data: serde_json::Value = resp.json().await.unwrap_or_default();
+                        (
+                            data.get("storage_used_bytes").and_then(|v| v.as_u64()),
+                            data.get("storage_limit_bytes").and_then(|v| v.as_u64()),
+                        )
+                    }
+                    _ => (None, None),
+                }
             } else {
-                None
-            },
-            enabled: config.arweave.enabled,
-            api_endpoint: config.arweave.api_endpoint.clone(),
-            address,
-            storage_used_bytes: None, // Populated when engine has AccountClient cache
-            storage_limit_bytes: None,
+                (None, None)
+            };
+
+            ArweaveSettings {
+                gateway: config.arweave.gateway.clone(),
+                wallet_path: config.arweave.wallet_path.clone(),
+                api_key: if has_api_key {
+                    Some("••••••••".into())
+                } else {
+                    None
+                },
+                enabled: config.arweave.enabled,
+                api_endpoint: config.arweave.api_endpoint.clone(),
+                address,
+                storage_used_bytes: storage_used,
+                storage_limit_bytes: storage_limit,
+            }
         },
         encryption: EncryptionSettings {
             enabled: config.encryption.enabled,
@@ -717,6 +813,9 @@ pub async fn start_services(
     if let Some(ref svc) = *guard {
         svc.start_all().await;
     }
+    drop(guard);
+    // Re-register proxy URL so the editor routes through it
+    let _ = register_proxy().await;
     Ok(())
 }
 
@@ -728,6 +827,9 @@ pub async fn stop_services(
     if let Some(ref svc) = *guard {
         svc.stop_all().await;
     }
+    drop(guard);
+    // Restore original ANTHROPIC_BASE_URL so the user's editor works without the proxy
+    let _ = unregister_proxy().await;
     Ok(())
 }
 
@@ -747,7 +849,28 @@ pub async fn restart_service(
 
 #[tauri::command]
 pub async fn check_ollama_installed() -> Result<bool, String> {
-    Ok(which::which("ollama").is_ok())
+    // 1. Check PATH (works when user's shell PATH is inherited)
+    if which::which("ollama").is_ok() {
+        return Ok(true);
+    }
+    // 2. Check known install paths (Tauri GUI apps may not inherit full PATH)
+    for path in &["/usr/local/bin/ollama", "/usr/bin/ollama"] {
+        if std::path::Path::new(path).exists() {
+            return Ok(true);
+        }
+    }
+    // 3. Check if Ollama is already running (Ollama.app serves on 11434)
+    if let Ok(resp) = reqwest::Client::new()
+        .get("http://127.0.0.1:11434")
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+    {
+        if resp.status().is_success() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[tauri::command]
@@ -874,6 +997,75 @@ pub async fn register_mcp() -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct ValidateKeyResponse {
+    pub valid: bool,
+    pub storage_used_bytes: Option<u64>,
+    pub storage_limit_bytes: Option<u64>,
+}
+
+#[tauri::command]
+pub async fn import_wallet(
+    config_path: State<'_, AppConfigPath>,
+    jwk_json: String,
+) -> Result<(), String> {
+    // Validate it's valid JSON
+    serde_json::from_str::<serde_json::Value>(&jwk_json)
+        .map_err(|e| format!("Invalid JSON: {e}"))?;
+
+    let wallet_path = config_path.0.parent()
+        .unwrap_or(config_path.0.as_path())
+        .join("wallet.json");
+
+    std::fs::write(&wallet_path, &jwk_json)
+        .map_err(|e| format!("Failed to write wallet: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn export_wallet(
+    config_path: State<'_, AppConfigPath>,
+) -> Result<String, String> {
+    let wallet_path = config_path.0.parent()
+        .unwrap_or(config_path.0.as_path())
+        .join("wallet.json");
+
+    if !wallet_path.exists() {
+        return Err("No wallet file found".into());
+    }
+
+    std::fs::read_to_string(&wallet_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn validate_api_key(api_key: String) -> Result<ValidateKeyResponse, String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://memoryport.ai/api/validate")
+        .header("X-API-Key", &api_key)
+        .json(&serde_json::json!({"wallet_address": "pending"}))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Ok(ValidateKeyResponse {
+            valid: false,
+            storage_used_bytes: None,
+            storage_limit_bytes: None,
+        });
+    }
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(ValidateKeyResponse {
+        valid: true,
+        storage_used_bytes: data.get("storage_used_bytes").and_then(|v| v.as_u64()),
+        storage_limit_bytes: data.get("storage_limit_bytes").and_then(|v| v.as_u64()),
+    })
+}
+
 #[tauri::command]
 pub async fn register_proxy() -> Result<(), String> {
     let claude_json = dirs::home_dir()
@@ -942,6 +1134,68 @@ pub async fn unregister_proxy() -> Result<(), String> {
 
     let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
     std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+// ── Reset ──
+
+#[tauri::command]
+pub async fn reset_all_data(
+    engine: State<'_, AppEngine>,
+    services: State<'_, AppServices>,
+    config_path: State<'_, AppConfigPath>,
+) -> Result<(), String> {
+    // 1. Stop services
+    let guard = services.0.read().await;
+    if let Some(ref svc) = *guard {
+        svc.stop_all().await;
+    }
+    drop(guard);
+
+    // 2. Shut down engine
+    {
+        let mut engine_guard = engine.0.write().await;
+        *engine_guard = None;
+    }
+
+    // 3. Unregister proxy (restore original ANTHROPIC_BASE_URL)
+    let _ = unregister_proxy().await;
+
+    // 4. Remove MCP from ~/.claude.json
+    if let Some(home) = dirs::home_dir() {
+        let claude_json = home.join(".claude.json");
+        if claude_json.exists() {
+            if let Ok(content) = std::fs::read_to_string(&claude_json) {
+                if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+                        servers.remove("memoryport");
+                    }
+                    let _ = std::fs::write(&claude_json, serde_json::to_string_pretty(&data).unwrap_or_default());
+                }
+            }
+        }
+
+        // 5. Remove MCP from ~/.cursor/mcp.json
+        let cursor_json = home.join(".cursor").join("mcp.json");
+        if cursor_json.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cursor_json) {
+                if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+                        servers.remove("memoryport");
+                    }
+                    let _ = std::fs::write(&cursor_json, serde_json::to_string_pretty(&data).unwrap_or_default());
+                }
+            }
+        }
+    }
+
+    // 6. Delete ~/.memoryport/ directory
+    let memoryport_dir = config_path.0.parent()
+        .unwrap_or(config_path.0.as_path());
+    if memoryport_dir.exists() {
+        std::fs::remove_dir_all(memoryport_dir).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

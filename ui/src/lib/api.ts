@@ -306,6 +306,30 @@ export async function restartAllServices(): Promise<void> {
   if (IS_TAURI) return tauriInvoke<void>("stop_services").then(() => tauriInvoke("start_services"));
 }
 
+export async function resetAllData(): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("reset_all_data");
+}
+
+export interface ValidateKeyResponse {
+  valid: boolean;
+  storage_used_bytes: number | null;
+  storage_limit_bytes: number | null;
+}
+
+export async function importWallet(jwkJson: string): Promise<void> {
+  if (IS_TAURI) return tauriInvoke("import_wallet", { jwkJson });
+}
+
+export async function exportWallet(): Promise<string> {
+  if (IS_TAURI) return tauriInvoke("export_wallet");
+  throw new Error("Not supported in web mode");
+}
+
+export async function validateApiKey(apiKey: string): Promise<ValidateKeyResponse> {
+  if (IS_TAURI) return tauriInvoke("validate_api_key", { apiKey });
+  return { valid: false, storage_used_bytes: null, storage_limit_bytes: null };
+}
+
 export interface SetupConfig {
   provider: string;
   model: string;

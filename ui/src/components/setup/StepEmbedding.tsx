@@ -63,7 +63,7 @@ export default function StepEmbedding({ onNext }: Props) {
   }
 
   const canContinue =
-    (provider === "openai") ||
+    (provider === "openai" && apiKey.trim().length > 0) ||
     (provider === "ollama" && ollamaStatus === "ready");
 
   return (
@@ -111,12 +111,9 @@ export default function StepEmbedding({ onNext }: Props) {
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-... (or set OPENAI_API_KEY env var)"
+            placeholder="sk-..."
             className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
           />
-          <p className="text-xs text-cream-dim mt-1">
-            Leave blank if OPENAI_API_KEY is already set in your environment
-          </p>
         </div>
       )}
 

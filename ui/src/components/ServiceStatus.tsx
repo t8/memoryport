@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useServiceHealth } from "../lib/ServiceContext";
-import { restartServiceByName, restartAllServices, type ServiceInfo } from "../lib/api";
-import { RotateCw, Clock } from "lucide-react";
+import { restartServiceByName, restartAllServices, stopServices, type ServiceInfo } from "../lib/api";
+import { RotateCw, Clock, StopCircle } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   running: "bg-accent",
@@ -117,8 +117,9 @@ function LastCheckedLabel({ lastCheckedAt }: { lastCheckedAt: number | null }) {
 }
 
 export default function ServiceStatus() {
-  const { health, loading, lastCheckedAt } = useServiceHealth();
+  const { health, loading, lastCheckedAt, refresh } = useServiceHealth();
   const [restartingAll, setRestartingAll] = useState(false);
+  const [stoppingAll, setStoppingAll] = useState(false);
 
   if (loading) return null;
 
@@ -128,11 +129,10 @@ export default function ServiceStatus() {
     setRestartingAll(true);
     try {
       await restartAllServices();
-    } catch {
-      // ignore
-    } finally {
-      setTimeout(() => setRestartingAll(false), 4000);
+    } catch (e) {
+      console.error("Restart all failed:", e);
     }
+    setTimeout(() => { refresh(); setRestartingAll(false); }, 1500);
   }
 
   return (
@@ -148,14 +148,31 @@ export default function ServiceStatus() {
           <ServiceRow key={s.name} info={s} />
         ))}
       </div>
-      <div className="px-6 mt-2">
+      <div className="px-6 mt-2 flex items-center gap-3">
         <button
           onClick={handleRestartAll}
-          disabled={restartingAll}
+          disabled={restartingAll || stoppingAll}
           className="flex items-center gap-1.5 text-[11px] text-cream-dim hover:text-cream transition-colors font-mono"
         >
           <RotateCw size={11} className={restartingAll ? "animate-spin" : ""} />
           {restartingAll ? "Restarting..." : "Restart All"}
+        </button>
+        <button
+          onClick={async () => {
+            setStoppingAll(true);
+            try {
+              await stopServices();
+              console.log("stopServices() completed");
+            } catch (e) {
+              console.error("Stop all failed:", e);
+            }
+            setTimeout(() => { refresh(); setStoppingAll(false); }, 1500);
+          }}
+          disabled={stoppingAll || restartingAll}
+          className="flex items-center gap-1.5 text-[11px] text-error/70 hover:text-error transition-colors font-mono"
+        >
+          <StopCircle size={11} />
+          {stoppingAll ? "Stopping..." : "Stop All"}
         </button>
       </div>
     </div>
