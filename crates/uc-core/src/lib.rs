@@ -225,7 +225,12 @@ impl Engine {
             None
         };
 
-        // Create retriever
+        // Warm up embedding provider (prevents 15s Ollama cold-start)
+        match embeddings.embed_batch(&["warmup"]).await {
+            Ok(_) => tracing::debug!("embedding provider warmed up"),
+            Err(e) => tracing::warn!(error = %e, "embedding warmup failed (non-fatal)"),
+        }
+
         // Initialize retrieval gate (Gate 2: embedding routing)
         let retrieval_gate = if config.retrieval.gating_enabled {
             match gate::RetrievalGate::init(embeddings.as_ref()).await {
@@ -241,6 +246,19 @@ impl Engine {
         } else {
             None
         };
+
+        // Keep embedding provider warm (prevents model eviction)
+        {
+            let keepalive_embeddings = embeddings.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(240)); // 4 min
+                interval.tick().await; // skip first immediate tick
+                loop {
+                    interval.tick().await;
+                    let _ = keepalive_embeddings.embed_batch(&["keepalive"]).await;
+                }
+            });
+        }
 
         let mut retriever = Retriever::new(
             index.clone(),
