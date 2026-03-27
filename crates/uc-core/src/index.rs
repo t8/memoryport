@@ -245,9 +245,11 @@ impl Index {
             sanitize_sql(session_id)
         );
 
+        self.checkout_latest().await?;
         let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)
+            .limit(1_000_000) // No implicit limit — return all chunks in session
             .execute()
             .await?
             .try_collect()
@@ -270,6 +272,7 @@ impl Index {
         let results: Vec<RecordBatch> = self.table
             .query()
             .only_if(filter)
+            .limit(1_000_000) // No implicit limit
             .execute()
             .await?
             .try_collect()
