@@ -53,7 +53,7 @@ export default function Integrations() {
   const [integrations, setIntegrations] = useState<IntegrationsStatus | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const { health } = useServiceHealth();
+  const { health, refresh: refreshHealth } = useServiceHealth();
 
   useEffect(() => {
     getStatus().then(setStatus).catch(console.error);
@@ -68,6 +68,8 @@ export default function Integrations() {
       setMessage(result.message);
       const updated = await getIntegrations();
       setIntegrations(updated);
+      // Refresh service health to sync status badges
+      setTimeout(refreshHealth, 1000);
     } catch (e: any) {
       setMessage(`Error: ${e.message}`);
     } finally {
@@ -107,13 +109,22 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">MCP Server</h3>
-                  <StatusBadge status={health.mcp.status} />
-                  <Tooltip content="The MCP server exposes Memoryport as tools to AI assistants like Claude Code and Cursor. It runs over stdio and lets the AI store and retrieve memories." />
+                  {mcpEnabled ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded text-accent bg-[rgba(132,204,22,0.1)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                      Registered
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded text-cream-dim bg-[rgba(255,244,224,0.05)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cream-dim" />
+                      Not registered
+                    </span>
+                  )}
+                  <Tooltip content="The MCP server is registered in your editor config and starts automatically when the editor launches. It runs over stdio — there's no background process to monitor." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
                   Provides memory tools to Claude Code, Cursor, and other MCP-compatible editors
                 </p>
-                {health.mcp.status !== "running" && mcpEnabled && <ServiceOfflineWarning />}
               </div>
             </div>
             <div className="shrink-0 ml-4">
@@ -153,13 +164,20 @@ export default function Integrations() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-semibold text-cream">API Proxy</h3>
-                  <StatusBadge status={health.proxy.status} />
+                  {proxyEnabled ? (
+                    <StatusBadge status={health.proxy.status} />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded text-cream-dim bg-[rgba(255,244,224,0.05)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cream-dim" />
+                      Off
+                    </span>
+                  )}
                   <Tooltip content="The proxy sits between your editor and the AI provider (Anthropic/OpenAI). It captures every message automatically and injects relevant context from your memory." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
                   Transparent capture of all conversations — both your messages and AI responses
                 </p>
-                {health.proxy.status !== "running" && proxyEnabled && <ServiceOfflineWarning />}
+                {proxyEnabled && health.proxy.status !== "running" && <ServiceOfflineWarning />}
               </div>
             </div>
             <div className="shrink-0 ml-4">

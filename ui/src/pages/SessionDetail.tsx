@@ -1,7 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getSession, retrieve, type SessionChunk, type SearchResult } from "../lib/api";
-import { ChevronLeft, User, Search } from "lucide-react";
+import { getSession, type SessionChunk } from "../lib/api";
+import { ChevronLeft, User, Bot, Search, X } from "lucide-react";
+
+function HighlightText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-accent/30 text-accent rounded-sm px-0.5">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
 
 export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -10,7 +27,6 @@ export default function SessionDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -37,18 +53,12 @@ export default function SessionDetail() {
     }
   }
 
-  async function handleSearch() {
-    if (!searchQuery.trim()) return;
-    setSearching(true);
-    try {
-      // Search uses the global retrieve but we filter to this session
-      await retrieve(searchQuery, 50);
-    } catch {
-      // ignore search errors
-    } finally {
-      setSearching(false);
-    }
-  }
+  // Filter chunks by search query (case-insensitive)
+  const filteredChunks = useMemo(() => {
+    if (!searchQuery.trim()) return chunks;
+    const q = searchQuery.toLowerCase();
+    return chunks.filter((c) => c.content.toLowerCase().includes(q));
+  }, [chunks, searchQuery]);
 
   return (
     <div>
@@ -66,7 +76,7 @@ export default function SessionDetail() {
           Session: {sessionId}
         </h2>
         <p className="text-cream-muted text-base mt-2">
-          {loading ? "Loading..." : `${chunks.length} messages`}
+          {loading ? "Loading..." : searchQuery ? `${filteredChunks.length} of ${chunks.length} messages` : `${chunks.length} messages`}
         </p>
       </div>
 
@@ -84,14 +94,16 @@ export default function SessionDetail() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Search your messages..."
-            className="w-full h-12 pl-10 pr-4 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover transition-colors"
+            className="w-full h-12 pl-10 pr-10 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover transition-colors"
           />
-          {searching && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              <div className="w-4 h-4 border-2 border-cream-dim border-t-cream rounded-full animate-spin" />
-            </div>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-cream-dim hover:text-cream transition-colors"
+            >
+              <X size={16} />
+            </button>
           )}
         </div>
       </div>
@@ -134,19 +146,23 @@ export default function SessionDetail() {
             <div className="w-4 h-4 border-2 border-cream-dim border-t-cream rounded-full animate-spin" />
             Loading session...
           </div>
-        ) : chunks.length === 0 && !error ? (
+        ) : filteredChunks.length === 0 && !error ? (
           <p className="text-cream-muted text-sm py-8">
-            No chunks found in this session.
+            {searchQuery ? "No messages match your search." : "No chunks found in this session."}
           </p>
         ) : (
           <div className="space-y-3">
-            {chunks.map((chunk, i) => (
+            {filteredChunks.map((chunk, i) => (
               <div
                 key={chunk.chunk_id || i}
                 className="border border-border bg-bg p-6"
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <User size={20} className="text-cream-muted" />
+                  {chunk.role === "assistant" ? (
+                    <Bot size={20} className="text-accent" />
+                  ) : (
+                    <User size={20} className="text-cream-muted" />
+                  )}
                   <span className="text-sm text-cream">
                     {chunk.role === "assistant" && chunk.source_model
                       ? chunk.source_model
@@ -163,7 +179,7 @@ export default function SessionDetail() {
                   </span>
                 </div>
                 <p className="text-sm text-cream-muted whitespace-pre-wrap leading-relaxed">
-                  {chunk.content}
+                  <HighlightText text={chunk.content} query={searchQuery} />
                 </p>
               </div>
             ))}

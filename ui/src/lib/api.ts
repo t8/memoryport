@@ -259,14 +259,26 @@ export async function checkConfigExists(): Promise<boolean> {
 
 export async function getServiceHealth(): Promise<ServiceHealthResponse> {
   if (IS_TAURI) return tauriInvoke("get_service_health");
-  // Web mode: check server health directly
+  // Web mode: check server + integrations for status
   try {
     await httpGet("/health");
+    // Also check integrations to get MCP/proxy config status
+    let integrations: IntegrationsStatus | null = null;
+    try {
+      integrations = await httpGet("/v1/integrations");
+    } catch { /* ignore */ }
+
+    const mcpRegistered = integrations?.mcp.enabled ?? false;
+    const proxyConfigured = integrations?.proxy.enabled ?? false;
+
+    // Proxy health: use the integrations status (server checks the proxy port for us)
+    const proxyOperational = integrations?.proxy.status === "operational";
+
     return {
       engine: { name: "engine", status: "running", uptime_secs: null, restart_count: 0, details: null },
-      proxy: { name: "proxy", status: "running", uptime_secs: null, restart_count: 0, details: null },
-      mcp: { name: "mcp", status: "stopped", uptime_secs: null, restart_count: 0, details: "check via Tauri" },
-      ollama: { name: "ollama", status: "stopped", uptime_secs: null, restart_count: 0, details: null },
+      proxy: { name: "proxy", status: proxyOperational ? "running" : proxyConfigured ? "stopped" : "stopped", uptime_secs: null, restart_count: 0, details: proxyConfigured ? "configured" : null },
+      mcp: { name: "mcp", status: mcpRegistered ? "running" : "stopped", uptime_secs: null, restart_count: 0, details: mcpRegistered ? "registered" : null },
+      ollama: { name: "ollama", status: integrations?.ollama.status === "operational" ? "running" : "stopped", uptime_secs: null, restart_count: 0, details: null },
     };
   } catch {
     return {
