@@ -342,6 +342,13 @@ impl Index {
         let count = self.table.count_rows(filter).await?;
         Ok(count)
     }
+
+    /// Compact fragmented data files. Merges small fragments into larger ones
+    /// and prunes old versions, dramatically improving query performance.
+    pub async fn optimize(&self) -> Result<(), IndexError> {
+        self.table.optimize(lancedb::table::OptimizeAction::All).await?;
+        Ok(())
+    }
 }
 
 /// Build an Arrow RecordBatch from chunk entries.

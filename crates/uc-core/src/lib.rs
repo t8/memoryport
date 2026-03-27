@@ -494,6 +494,12 @@ impl Engine {
     }
 
     /// Return engine status.
+    /// Compact the index to merge fragmented files.
+    pub async fn optimize(&self) -> Result<(), EngineError> {
+        self.index.optimize().await?;
+        Ok(())
+    }
+
     pub async fn status(&self) -> Result<EngineStatus, EngineError> {
         let pending = self.batcher.pending_count().await;
         let indexed = self.index.count(None).await?;

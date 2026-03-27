@@ -24,3 +24,12 @@ pub async fn status(
         embedding_dimensions: s.embedding_dimensions,
     }))
 }
+
+pub async fn compact(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let engine = state.pool.get_or_create(&user.user_id).await?;
+    engine.optimize().await?;
+    Ok(Json(serde_json::json!({ "status": "compaction complete" })))
+}
