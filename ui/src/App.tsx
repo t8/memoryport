@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { checkConfigExists, isTauri } from "./lib/api";
+import { events } from "./lib/telemetry";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import SessionDetail from "./pages/SessionDetail";
@@ -115,6 +116,8 @@ function FirstRunGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useEffect(() => { events.appOpened(); }, []);
+
   return (
     <FirstRunGuard>
       <Routes>

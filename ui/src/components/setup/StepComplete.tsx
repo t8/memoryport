@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { writeInitialConfig, initEngine, startServices } from "../../lib/api";
+import { setTelemetryEnabled, events } from "../../lib/telemetry";
 import { Check, Loader2, AlertTriangle } from "lucide-react";
 
 interface Props {
@@ -57,6 +58,7 @@ export default function StepComplete({
       await startServices();
 
       setStatus("done");
+      events.setupCompleted(provider);
       setTimeout(onComplete, 1000);
     } catch (e) {
       const rawMsg = e instanceof Error ? e.message : String(e);
@@ -105,6 +107,18 @@ export default function StepComplete({
           <span className="text-cream font-mono">Config at ~/.memoryport/uc.toml</span>
         </div>
       </div>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          defaultChecked={false}
+          onChange={(e) => setTelemetryEnabled(e.target.checked)}
+          className="mt-1 accent-accent"
+        />
+        <span className="text-sm text-cream-muted">
+          Help improve Memoryport by sending anonymous usage data (no conversations, no PII)
+        </span>
+      </label>
 
       {error && (
         <div className="border border-error/50 bg-error/10 p-4">
