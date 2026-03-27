@@ -14,7 +14,7 @@ export default function ActivityHeatmap({
   const countMap = new Map(data.map((d) => [d.date, d.count]));
   const maxCount = Math.max(1, ...data.map((d) => d.count));
 
-  // Generate the grid: weeks × 7 days, ending at today
+  // Generate the grid: weeks x 7 days, ending at today
   const today = new Date();
   const cells: { date: string; count: number; col: number; row: number }[] = [];
 
@@ -51,8 +51,9 @@ export default function ActivityHeatmap({
                 key={i}
                 x={0}
                 y={i * (cellSize + gap) + cellSize - 1}
-                className="fill-zinc-600"
+                fill="rgba(255, 244, 224, 0.3)"
                 fontSize={9}
+                fontFamily="var(--font-mono)"
               >
                 {label}
               </text>
@@ -69,8 +70,8 @@ export default function ActivityHeatmap({
             rx={2}
             fill={
               cell.count === 0
-                ? "#27272a" // zinc-800
-                : `rgba(16, 185, 129, ${0.2 + (cell.count / maxCount) * 0.8})`
+                ? "#1a1a1a"
+                : `rgba(132, 204, 22, ${0.2 + (cell.count / maxCount) * 0.8})`
             }
           >
             <title>

@@ -4,11 +4,11 @@ import { restartServiceByName, type ServiceInfo } from "../lib/api";
 import { RotateCw } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
-  running: "bg-emerald-400",
+  running: "bg-accent",
   starting: "bg-yellow-400",
   unhealthy: "bg-yellow-400",
-  crashed: "bg-red-400",
-  stopped: "bg-zinc-600",
+  crashed: "bg-error",
+  stopped: "bg-cream-dim",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -40,16 +40,16 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-zinc-800/50 rounded transition-colors"
+        className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-surface rounded transition-colors"
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_COLORS[info.status] || "bg-zinc-600"}`} />
-        <span className="text-zinc-400 capitalize flex-1 text-left">{info.name}</span>
-        <span className="text-zinc-600 text-[10px]">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_COLORS[info.status] || "bg-cream-dim"}`} />
+        <span className="text-cream-muted capitalize flex-1 text-left">{info.name}</span>
+        <span className="text-cream-dim text-[10px] font-mono">
           {STATUS_LABELS[info.status] || info.status}
         </span>
       </button>
       {expanded && (
-        <div className="ml-5 px-2 py-1 text-[10px] text-zinc-500 space-y-0.5">
+        <div className="ml-5 px-2 py-1 text-[10px] text-cream-dim space-y-0.5">
           {info.uptime_secs != null && (
             <p>Uptime: {formatUptime(info.uptime_secs)}</p>
           )}
@@ -61,7 +61,7 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
             <button
               onClick={handleRestart}
               disabled={restarting}
-              className="flex items-center gap-1 text-zinc-400 hover:text-zinc-200 mt-1"
+              className="flex items-center gap-1 text-cream-dim hover:text-cream mt-1"
             >
               <RotateCw size={10} className={restarting ? "animate-spin" : ""} />
               {restarting ? "Restarting..." : "Restart"}
@@ -87,8 +87,8 @@ export default function ServiceStatus() {
   const services = [health.engine, health.proxy, health.mcp, health.ollama];
 
   return (
-    <div className="px-1 py-2 border-t border-zinc-800">
-      <p className="px-2 text-[10px] text-zinc-600 uppercase tracking-wider mb-1">
+    <div className="px-3 py-2 border-t border-border">
+      <p className="px-2 text-[10px] text-cream-dim uppercase tracking-wider font-mono mb-1">
         Services
       </p>
       <div className="space-y-0.5">

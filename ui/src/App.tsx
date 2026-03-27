@@ -37,7 +37,7 @@ function FirstRunGuard({ children }: { children: React.ReactNode }) {
 
   if (!checked) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-500 text-sm">
+      <div className="min-h-screen bg-bg flex items-center justify-center text-cream-muted text-sm">
         Loading...
       </div>
     );

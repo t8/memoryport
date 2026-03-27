@@ -5,6 +5,7 @@ import {
   Network,
   Plug,
   Settings,
+  Database,
 } from "lucide-react";
 import ServiceStatus from "./ServiceStatus";
 
@@ -18,23 +19,25 @@ const navItems = [
 
 export default function Layout() {
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-bg">
       {/* Sidebar */}
-      <nav className="w-56 border-r border-zinc-800 bg-zinc-950 flex flex-col">
-        <div className="p-4 border-b border-zinc-800">
-          <h1 className="text-lg font-bold tracking-tight">Memoryport</h1>
-          <p className="text-xs text-zinc-500">Destroyer of the context window</p>
+      <nav className="w-56 border-r border-border bg-bg flex flex-col">
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Database size={16} className="text-cream" />
+            <h1 className="font-display uppercase text-cream text-sm tracking-wide">Memoryport</h1>
+          </div>
         </div>
-        <div className="flex-1 p-2 space-y-1">
+        <div className="flex-1 py-2">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                `flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
                   isActive
-                    ? "bg-zinc-800 text-zinc-100"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                    ? "text-cream border-l-2 border-cream bg-surface"
+                    : "text-cream-muted hover:text-cream hover:bg-surface border-l-2 border-transparent"
                 }`
               }
             >
@@ -44,13 +47,13 @@ export default function Layout() {
           ))}
         </div>
         <ServiceStatus />
-        <div className="p-4 border-t border-zinc-800 text-xs text-zinc-600">
+        <div className="px-4 py-3 border-t border-border text-xs text-cream-dim font-mono">
           v0.1.0
         </div>
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-zinc-950">
+      <main className="flex-1 overflow-auto bg-bg">
         <Outlet />
       </main>
     </div>

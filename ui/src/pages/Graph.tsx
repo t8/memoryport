@@ -179,22 +179,22 @@ export default function Graph() {
   if (error) {
     return (
       <div className="p-8">
-        <p className="text-red-400">Failed to load graph: {error}</p>
+        <p className="text-error">Failed to load graph: {error}</p>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="p-8 text-zinc-500">Computing knowledge graph...</div>
+      <div className="p-8 text-cream-muted">Computing knowledge graph...</div>
     );
   }
 
   if (!graph || graph.nodes.length === 0) {
     return (
       <div className="p-8">
-        <h2 className="text-2xl font-bold tracking-tight">Knowledge Graph</h2>
-        <p className="text-zinc-500 text-sm mt-1">
+        <h2 className="font-display uppercase text-cream text-2xl tracking-wide">Knowledge Graph</h2>
+        <p className="text-cream-muted text-sm mt-1">
           Not enough sessions to build a graph yet. Keep having conversations!
         </p>
       </div>
@@ -211,21 +211,21 @@ export default function Graph() {
   return (
     <div className="flex h-full">
       {/* Graph */}
-      <div className="flex-1 relative bg-zinc-950 overflow-hidden">
+      <div className="flex-1 relative bg-bg overflow-hidden">
         <div className="absolute top-4 left-4 z-10">
-          <h2 className="text-lg font-bold">Knowledge Graph</h2>
-          <p className="text-xs text-zinc-500">
+          <h2 className="font-display uppercase text-cream text-lg tracking-wide">Knowledge Graph</h2>
+          <p className="text-xs text-cream-dim font-mono">
             {graph.nodes.length} sessions · {graph.edges.length} connections
           </p>
           {simulating && (
             <div className="mt-2 flex items-center gap-2">
-              <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div className="w-24 h-1.5 bg-surface overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
+                  className="h-full bg-accent transition-all duration-300"
                   style={{ width: `${simProgress}%` }}
                 />
               </div>
-              <span className="text-xs text-zinc-600">
+              <span className="text-xs text-cream-dim font-mono">
                 Arranging {simProgress}%
               </span>
             </div>
@@ -253,7 +253,7 @@ export default function Graph() {
                 y1={source.y}
                 x2={target.x}
                 y2={target.y}
-                stroke={isHighlighted ? "rgba(16,185,129,0.5)" : "rgba(113,113,122,0.15)"}
+                stroke={isHighlighted ? "rgba(132,204,22,0.5)" : "rgba(255,244,224,0.08)"}
                 strokeWidth={isHighlighted ? 2 : 1}
               />
             );
@@ -264,9 +264,10 @@ export default function Graph() {
             if (!node.x || !node.y) return null;
             const age = now - node.last_timestamp;
             const freshness = 1 - age / maxAge;
-            const r = Math.round(16 + (1 - freshness) * 80);
-            const g = Math.round(185 * freshness + 100 * (1 - freshness));
-            const b = Math.round(129 * freshness + 100 * (1 - freshness));
+            // Use accent green for fresh, cream-dim for old
+            const r = Math.round(132 * freshness + 255 * (1 - freshness));
+            const g = Math.round(204 * freshness + 244 * (1 - freshness));
+            const b = Math.round(22 * freshness + 224 * (1 - freshness));
             const color = `rgb(${r},${g},${b})`;
             const radius = sizeScale(node.chunk_count);
             const isHovered = hoveredNode === node.id;
@@ -305,11 +306,12 @@ export default function Graph() {
                     x={node.x}
                     y={node.y! + radius + 14}
                     textAnchor="middle"
-                    fill="#a1a1aa"
+                    fill="rgba(255, 244, 224, 0.5)"
                     fontSize={10}
+                    fontFamily="var(--font-mono)"
                   >
                     {node.label.length > 25
-                      ? node.label.slice(0, 25) + "…"
+                      ? node.label.slice(0, 25) + "..."
                       : node.label}
                   </text>
                 )}
@@ -318,9 +320,10 @@ export default function Graph() {
                   x={node.x}
                   y={node.y! + 4}
                   textAnchor="middle"
-                  fill="white"
+                  fill="#0d0d0d"
                   fontSize={radius > 12 ? 10 : 8}
                   fontWeight="bold"
+                  fontFamily="var(--font-mono)"
                 >
                   {node.chunk_count}
                 </text>
@@ -332,20 +335,20 @@ export default function Graph() {
 
       {/* Detail panel */}
       {selectedNode && (
-        <div className="w-96 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto">
-          <div className="p-4 border-b border-zinc-800">
+        <div className="w-96 border-l border-border bg-bg overflow-y-auto">
+          <div className="p-4 border-b border-border">
             <button
               onClick={() => {
                 setSelectedNode(null);
                 setSessionChunks([]);
               }}
-              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 mb-2 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-cream-dim hover:text-cream mb-2 transition-colors"
             >
               <ArrowLeft size={12} />
               Close
             </button>
-            <h3 className="font-medium text-sm">{selectedNode.label}</h3>
-            <p className="text-xs text-zinc-500 mt-1">
+            <h3 className="font-medium text-sm text-cream">{selectedNode.label}</h3>
+            <p className="text-xs text-cream-dim font-mono mt-1">
               {selectedNode.chunk_count} chunks ·{" "}
               {new Date(selectedNode.first_timestamp).toLocaleDateString()}
             </p>
@@ -354,23 +357,23 @@ export default function Graph() {
             {sessionChunks.slice(0, 20).map((chunk, i) => (
               <div
                 key={i}
-                className={`rounded p-2 text-xs ${
+                className={`p-2 text-xs ${
                   chunk.role === "assistant"
-                    ? "bg-zinc-800/50 text-zinc-400"
-                    : "bg-zinc-800 text-zinc-300"
+                    ? "bg-surface text-cream-muted"
+                    : "bg-surface border border-border text-cream-muted"
                 }`}
               >
                 <div className="flex items-center gap-1 mb-1">
                   {chunk.role === "assistant" ? (
-                    <Bot size={10} className="text-blue-400" />
+                    <Bot size={10} className="text-accent" />
                   ) : (
-                    <User size={10} className="text-emerald-400" />
+                    <User size={10} className="text-cream" />
                   )}
                   <span
-                    className={`font-medium ${
+                    className={`font-mono ${
                       chunk.role === "assistant"
-                        ? "text-blue-400"
-                        : "text-emerald-400"
+                        ? "text-accent"
+                        : "text-cream"
                     }`}
                   >
                     {chunk.source_model || chunk.role || "unknown"}
@@ -380,7 +383,7 @@ export default function Graph() {
               </div>
             ))}
             {sessionChunks.length > 20 && (
-              <p className="text-xs text-zinc-600 text-center">
+              <p className="text-xs text-cream-dim text-center font-mono">
                 +{sessionChunks.length - 20} more
               </p>
             )}

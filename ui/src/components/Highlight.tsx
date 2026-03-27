@@ -24,7 +24,7 @@ export default function Highlight({ text, query }: HighlightProps) {
         pattern.test(part) ? (
           <mark
             key={i}
-            className="bg-amber-500/30 text-amber-200 rounded-sm px-0.5"
+            className="bg-accent/30 text-accent rounded-sm px-0.5"
           >
             {part}
           </mark>

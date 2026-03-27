@@ -26,11 +26,11 @@ export default function Setup() {
   });
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-8">
+    <div className="min-h-screen bg-bg text-cream flex items-center justify-center p-8">
       <div className="w-full max-w-lg">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight">Memoryport</h1>
-          <p className="text-zinc-500 text-sm">Setup wizard</p>
+          <h1 className="font-display uppercase text-cream text-2xl tracking-wide">Memoryport</h1>
+          <p className="text-cream-muted text-sm">Setup wizard</p>
         </div>
 
         <SetupProgress current={step} />

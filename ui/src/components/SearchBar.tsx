@@ -27,7 +27,7 @@ export default function SearchBar({ onResults }: SearchBarProps) {
     <div className="relative">
       <Search
         size={16}
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+        className="absolute left-3 top-1/2 -translate-y-1/2 text-cream-dim"
       />
       <input
         type="text"
@@ -35,11 +35,11 @@ export default function SearchBar({ onResults }: SearchBarProps) {
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSearch()}
         placeholder="Search your memory..."
-        className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-md text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+        className="w-full pl-9 pr-4 py-2 bg-bg border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover transition-colors"
       />
       {loading && (
         <div className="absolute right-3 top-1/2 -translate-y-1/2">
-          <div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+          <div className="w-4 h-4 border-2 border-cream-dim border-t-cream rounded-full animate-spin" />
         </div>
       )}
     </div>

@@ -43,15 +43,15 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-6 text-center">
-          <p className="text-red-400 font-medium">Connection Error</p>
-          <p className="text-sm text-red-400/70 mt-1">{error}</p>
+        <div className="border border-error/50 bg-error/10 p-6 text-center">
+          <p className="text-error font-medium">Connection Error</p>
+          <p className="text-sm text-error/70 mt-1">{error}</p>
           <button
             onClick={() => {
               setError(null);
               loadData();
             }}
-            className="mt-4 px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-sm transition-colors"
+            className="mt-4 px-4 py-1.5 bg-surface border border-border hover:bg-surface-hover text-cream text-sm transition-colors"
           >
             Retry
           </button>
@@ -63,8 +63,8 @@ export default function Dashboard() {
   // Dashboard view
   return (
     <div className="p-8 max-w-5xl">
-      <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-      <p className="text-zinc-500 text-sm mt-1">Your memory at a glance</p>
+      <h2 className="font-display uppercase text-cream text-2xl tracking-wide">Dashboard</h2>
+      <p className="text-cream-muted text-sm mt-1">Your memory at a glance</p>
 
       {/* Status cards */}
       <div className="grid grid-cols-3 gap-4 mt-6">
@@ -82,7 +82,7 @@ export default function Dashboard() {
 
       {/* Search */}
       <div className="mt-8">
-        <h3 className="text-sm font-medium text-zinc-400 mb-2">
+        <h3 className="text-sm text-cream-dim uppercase tracking-wider font-mono mb-2">
           Search Memory
         </h3>
         <SearchBar
@@ -101,20 +101,20 @@ export default function Dashboard() {
               setSearchResults(null);
               setSearchQuery("");
             }}
-            className="text-xs text-zinc-500 hover:text-zinc-300 mb-2 transition-colors"
+            className="text-xs text-cream-dim hover:text-cream-muted mb-2 transition-colors"
           >
             Clear results
           </button>
           {searchResults.length === 0 ? (
-            <p className="text-sm text-zinc-500">No results found.</p>
+            <p className="text-sm text-cream-muted">No results found.</p>
           ) : (
             <div className="space-y-2">
               {searchResults.map((r) => (
                 <div
                   key={r.chunk_id}
-                  className="rounded-md border border-zinc-800 bg-zinc-900/30 p-3"
+                  className="border border-border bg-surface p-3"
                 >
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <div className="flex items-center gap-2 text-xs text-cream-dim">
                     <span className="font-mono">{r.score.toFixed(3)}</span>
                     <span>·</span>
                     <span>{r.session_id}</span>
@@ -127,7 +127,7 @@ export default function Dashboard() {
                       </>
                     )}
                   </div>
-                  <p className="text-sm text-zinc-300 mt-1 line-clamp-3">
+                  <p className="text-sm text-cream-muted mt-1 line-clamp-3">
                     <Highlight text={r.content} query={searchQuery} />
                   </p>
                 </div>
@@ -140,7 +140,7 @@ export default function Dashboard() {
       {/* Sessions */}
       {!searchResults && (
         <div className="mt-8">
-          <h3 className="text-sm font-medium text-zinc-400 mb-2">
+          <h3 className="text-sm text-cream-dim uppercase tracking-wider font-mono mb-2">
             Recent Sessions
           </h3>
           <SessionList sessions={sessions} onSelect={openSession} />

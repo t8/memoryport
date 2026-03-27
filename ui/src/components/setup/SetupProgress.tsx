@@ -6,25 +6,25 @@ export default function SetupProgress({ current }: { current: number }) {
       {STEPS.map((label, i) => (
         <div key={label} className="flex items-center gap-2">
           <div
-            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
+            className={`w-7 h-7 flex items-center justify-center text-xs font-mono font-medium ${
               i < current
-                ? "bg-emerald-600 text-white"
+                ? "bg-accent text-bg"
                 : i === current
-                ? "bg-zinc-100 text-zinc-900"
-                : "bg-zinc-800 text-zinc-500"
+                ? "bg-cream text-bg"
+                : "bg-surface text-cream-dim"
             }`}
           >
-            {i < current ? "✓" : i + 1}
+            {i < current ? "+" : i + 1}
           </div>
           <span
             className={`text-sm hidden sm:inline ${
-              i === current ? "text-zinc-100" : "text-zinc-500"
+              i === current ? "text-cream" : "text-cream-dim"
             }`}
           >
             {label}
           </span>
           {i < STEPS.length - 1 && (
-            <div className={`w-8 h-px ${i < current ? "bg-emerald-600" : "bg-zinc-700"}`} />
+            <div className={`w-8 h-px ${i < current ? "bg-accent" : "bg-border"}`} />
           )}
         </div>
       ))}

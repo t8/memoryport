@@ -61,21 +61,21 @@ export default function Settings() {
   if (error) {
     return (
       <div className="p-8">
-        <p className="text-red-400">Failed to load settings: {error}</p>
+        <p className="text-error">Failed to load settings: {error}</p>
       </div>
     );
   }
 
   if (!settings) {
-    return <div className="p-8 text-zinc-500">Loading settings...</div>;
+    return <div className="p-8 text-cream-muted">Loading settings...</div>;
   }
 
   return (
     <div className="p-8 max-w-3xl space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
-          <p className="text-zinc-500 text-sm mt-1">
+          <h2 className="font-display uppercase text-cream text-2xl tracking-wide">Settings</h2>
+          <p className="text-cream-muted text-sm mt-1">
             Configure your Memoryport instance
           </p>
         </div>
@@ -83,7 +83,7 @@ export default function Settings() {
           <button
             onClick={handleRestart}
             disabled={restarting}
-            className="flex items-center gap-2 px-4 py-2 border border-zinc-700 hover:bg-zinc-800 disabled:opacity-50 rounded-md text-sm font-medium transition-colors text-zinc-300"
+            className="flex items-center gap-2 px-4 py-2 border border-border bg-bg hover:bg-surface disabled:opacity-50 text-sm font-medium transition-colors text-cream"
           >
             <RotateCw size={16} className={restarting ? "animate-spin" : ""} />
             {restarting ? "Restarting..." : "Restart Server"}
@@ -91,7 +91,7 @@ export default function Settings() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-md text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-cream text-bg hover:bg-cream/90 disabled:opacity-50 text-sm font-medium transition-colors"
           >
             {saved ? <Check size={16} /> : <Save size={16} />}
             {saved ? "Saved" : "Save Changes"}
@@ -100,14 +100,14 @@ export default function Settings() {
       </div>
 
       {/* Embeddings */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
+      <section className="border border-border bg-bg p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium">Embedding Provider</h3>
+          <h3 className="font-medium text-cream">Embedding Provider</h3>
           <Tooltip content="Embeddings convert text into numbers so Memoryport can find semantically similar content. This is the engine behind search and context retrieval." />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Provider</label>
+            <label className="block text-xs text-cream-dim font-mono mb-1">Provider</label>
             <select
               value={settings.embeddings.provider}
               onChange={(e) =>
@@ -116,14 +116,14 @@ export default function Settings() {
                   embeddings: { ...settings.embeddings, provider: e.target.value },
                 })
               }
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-zinc-500"
+              className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream focus:outline-none focus:border-border-hover"
             >
               <option value="openai">OpenAI</option>
               <option value="ollama">Ollama</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Model</label>
+            <label className="block text-xs text-cream-dim font-mono mb-1">Model</label>
             <input
               type="text"
               value={settings.embeddings.model}
@@ -133,12 +133,12 @@ export default function Settings() {
                   embeddings: { ...settings.embeddings, model: e.target.value },
                 })
               }
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-zinc-500"
+              className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
             />
           </div>
         </div>
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">
+          <label className="block text-xs text-cream-dim font-mono mb-1">
             API Key {settings.embeddings.provider === "ollama" && "(not needed for Ollama)"}
           </label>
           <input
@@ -151,21 +151,21 @@ export default function Settings() {
               })
             }
             placeholder={settings.embeddings.provider === "openai" ? "sk-... (or set OPENAI_API_KEY)" : "Not required"}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-zinc-500"
+            className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
           />
         </div>
       </section>
 
       {/* Retrieval */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
+      <section className="border border-border bg-bg p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium">Retrieval</h3>
+          <h3 className="font-medium text-cream">Retrieval</h3>
           <Tooltip content="Controls how Memoryport decides what context to surface. Smart gating prevents unnecessary searches on simple messages like greetings or commands." />
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm">Smart Gating</p>
-            <p className="text-xs text-zinc-500">Skip retrieval for greetings, commands, and short queries</p>
+            <p className="text-sm text-cream">Smart Gating</p>
+            <p className="text-xs text-cream-dim">Skip retrieval for greetings, commands, and short queries</p>
           </div>
           <Toggle
             enabled={settings.retrieval.gating_enabled}
@@ -180,15 +180,15 @@ export default function Settings() {
       </section>
 
       {/* Proxy */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
+      <section className="border border-border bg-bg p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium">Proxy</h3>
+          <h3 className="font-medium text-cream">Proxy</h3>
           <Tooltip content="The proxy sits between your editor and the AI provider, injecting relevant context and capturing conversations automatically." />
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm">Multi-turn Retrieval</p>
-            <p className="text-xs text-zinc-500">Let the LLM iteratively query memory with tool calls before responding</p>
+            <p className="text-sm text-cream">Multi-turn Retrieval</p>
+            <p className="text-xs text-cream-dim">Let the LLM iteratively query memory with tool calls before responding</p>
           </div>
           <Toggle
             enabled={settings.proxy?.agentic_enabled ?? true}
@@ -203,13 +203,13 @@ export default function Settings() {
       </section>
 
       {/* Arweave */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
+      <section className="border border-border bg-bg p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium">Arweave Storage</h3>
+          <h3 className="font-medium text-cream">Arweave Storage</h3>
           <Tooltip content="Arweave provides permanent, decentralized storage. A Pro subscription at memoryport.ai includes Turbo credits for uploads. Without an API key, memories are stored locally only." />
         </div>
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">API Key</label>
+          <label className="block text-xs text-cream-dim font-mono mb-1">API Key</label>
           <input
             type="password"
             value={settings.arweave.api_key || ""}
@@ -220,11 +220,11 @@ export default function Settings() {
               })
             }
             placeholder="uc_... (from memoryport.ai/dashboard)"
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-zinc-500"
+            className="w-full px-3 py-2 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
           />
-          <p className="text-xs text-zinc-600 mt-1">
+          <p className="text-xs text-cream-dim mt-1">
             Get a key at{" "}
-            <a href="https://memoryport.ai/dashboard" target="_blank" rel="noopener" className="text-zinc-400 hover:text-zinc-300 underline">
+            <a href="https://memoryport.ai/dashboard" target="_blank" rel="noopener" className="text-cream-muted hover:text-cream underline">
               memoryport.ai
             </a>
             {" "}— or set UC_API_KEY env var
@@ -232,25 +232,25 @@ export default function Settings() {
         </div>
         {settings.arweave.address && (
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Arweave Address</label>
-            <div className="px-3 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-md text-sm text-zinc-400 font-mono truncate">
+            <label className="block text-xs text-cream-dim font-mono mb-1">Arweave Address</label>
+            <div className="px-3 py-2 bg-surface border border-border text-sm text-cream-muted font-mono truncate">
               {settings.arweave.address}
             </div>
-            <p className="text-xs text-zinc-600 mt-1">Auto-generated signing key for Arweave uploads</p>
+            <p className="text-xs text-cream-dim mt-1">Auto-generated signing key for Arweave uploads</p>
           </div>
         )}
       </section>
 
       {/* Encryption */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 space-y-4">
+      <section className="border border-border bg-bg p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium">Encryption</h3>
+          <h3 className="font-medium text-cream">Encryption</h3>
           <Tooltip content="When enabled, all data uploaded to Arweave is encrypted with AES-256-GCM. Each batch gets a unique key. You can logically delete data by destroying its encryption key." />
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm">Encrypt at rest</p>
-            <p className="text-xs text-zinc-500">AES-256-GCM encryption for all Arweave uploads</p>
+            <p className="text-sm text-cream">Encrypt at rest</p>
+            <p className="text-xs text-cream-dim">AES-256-GCM encryption for all Arweave uploads</p>
           </div>
           <Toggle
             enabled={settings.encryption.enabled}

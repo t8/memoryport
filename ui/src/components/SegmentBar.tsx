@@ -16,13 +16,13 @@ export default function SegmentBar({
   const total = segments.reduce((sum, s) => sum + s.value, 0);
   if (total === 0) {
     return (
-      <div className={`w-full ${height} rounded-full bg-zinc-800`} />
+      <div className={`w-full ${height} bg-surface`} />
     );
   }
 
   return (
     <div className="space-y-2">
-      <div className={`flex w-full overflow-hidden rounded-full bg-zinc-800 ${height}`}>
+      <div className={`flex w-full overflow-hidden bg-surface ${height}`}>
         {segments.map(
           (s, i) =>
             s.value > 0 && (
@@ -41,13 +41,13 @@ export default function SegmentBar({
         {segments.map(
           (s, i) =>
             s.value > 0 && (
-              <div key={i} className="flex items-center gap-1.5 text-xs text-zinc-400">
+              <div key={i} className="flex items-center gap-1.5 text-xs text-cream-muted">
                 <span
                   className="inline-block w-2 h-2 rounded-full"
                   style={{ backgroundColor: s.color }}
                 />
                 {s.label}{" "}
-                <span className="text-zinc-500">
+                <span className="text-cream-dim font-mono">
                   ({s.value} · {Math.round((s.value / total) * 100)}%)
                 </span>
               </div>

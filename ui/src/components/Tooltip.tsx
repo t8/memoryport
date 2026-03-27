@@ -15,11 +15,11 @@ export default function Tooltip({ content, children }: TooltipProps) {
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
-      {children || <Info size={14} className="text-zinc-500 cursor-help" />}
+      {children || <Info size={14} className="text-cream-dim cursor-help" />}
       {show && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 whitespace-normal w-64 z-50 shadow-lg">
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-surface border border-border rounded text-xs text-cream-muted whitespace-normal w-64 z-50 shadow-lg">
           {content}
-          <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-zinc-700" />
+          <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-border" />
         </span>
       )}
     </span>

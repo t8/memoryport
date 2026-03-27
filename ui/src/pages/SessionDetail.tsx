@@ -39,28 +39,29 @@ export default function SessionDetail() {
     <div className="p-8 max-w-4xl">
       <button
         onClick={() => navigate("/")}
-        className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors mb-6"
+        className="flex items-center gap-1.5 text-sm text-cream-dim hover:text-cream transition-colors mb-6"
       >
         <ArrowLeft size={14} />
         Back to Dashboard
       </button>
 
       <div className="flex items-center gap-2 mb-1">
-        <MessageSquare size={18} className="text-zinc-500" />
-        <h2 className="text-xl font-bold tracking-tight">
-          Session: {sessionId}
+        <MessageSquare size={18} className="text-cream-dim" />
+        <h2 className="font-display uppercase text-cream text-xl tracking-wide">
+          Session
         </h2>
       </div>
-      <p className="text-zinc-500 text-sm mb-6">
+      <p className="text-cream-muted text-sm font-mono mb-1">{sessionId}</p>
+      <p className="text-cream-dim text-sm mb-6">
         {loading ? "Loading..." : `${chunks.length} messages`}
       </p>
 
       {error && (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-4 mb-4">
-          <p className="text-red-400 text-sm">{error}</p>
+        <div className="border border-error/50 bg-error/10 p-4 mb-4">
+          <p className="text-error text-sm">{error}</p>
           <button
             onClick={() => sessionId && loadSession(sessionId)}
-            className="mt-2 text-xs text-zinc-400 hover:text-zinc-200"
+            className="mt-2 text-xs text-cream-dim hover:text-cream"
           >
             Retry
           </button>
@@ -68,12 +69,12 @@ export default function SessionDetail() {
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-zinc-500 py-8">
-          <div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+        <div className="flex items-center gap-2 text-cream-muted py-8">
+          <div className="w-4 h-4 border-2 border-cream-dim border-t-cream rounded-full animate-spin" />
           Loading session...
         </div>
       ) : chunks.length === 0 && !error ? (
-        <p className="text-zinc-500 text-sm py-8">
+        <p className="text-cream-muted text-sm py-8">
           No chunks found in this session.
         </p>
       ) : (
@@ -81,23 +82,23 @@ export default function SessionDetail() {
           {chunks.map((chunk, i) => (
             <div
               key={chunk.chunk_id || i}
-              className={`rounded-lg border p-4 ${
+              className={`border p-4 ${
                 chunk.role === "assistant"
-                  ? "border-zinc-700/50 bg-zinc-900/30"
-                  : "border-zinc-800 bg-zinc-900/60"
+                  ? "border-border bg-surface"
+                  : "border-border bg-bg"
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
                 {chunk.role === "assistant" ? (
-                  <Bot size={14} className="text-blue-400" />
+                  <Bot size={14} className="text-accent" />
                 ) : (
-                  <User size={14} className="text-emerald-400" />
+                  <User size={14} className="text-cream" />
                 )}
                 <span
-                  className={`text-xs font-medium ${
+                  className={`text-xs font-mono ${
                     chunk.role === "assistant"
-                      ? "text-blue-400"
-                      : "text-emerald-400"
+                      ? "text-accent"
+                      : "text-cream"
                   }`}
                 >
                   {chunk.role === "assistant" && chunk.source_model
@@ -105,15 +106,15 @@ export default function SessionDetail() {
                     : chunk.role || "unknown"}
                 </span>
                 {chunk.source_integration && (
-                  <span className="text-xs text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
+                  <span className="text-xs text-cream-dim bg-surface border border-border px-1.5 py-0.5 font-mono">
                     {chunk.source_integration}
                   </span>
                 )}
-                <span className="text-xs text-zinc-600">
+                <span className="text-xs text-cream-dim font-mono">
                   {new Date(chunk.timestamp).toLocaleString()}
                 </span>
               </div>
-              <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+              <p className="text-sm text-cream-muted whitespace-pre-wrap leading-relaxed">
                 {chunk.content}
               </p>
             </div>

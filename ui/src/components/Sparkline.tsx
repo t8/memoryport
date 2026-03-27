@@ -10,13 +10,13 @@ export default function Sparkline({
   data,
   width = 200,
   height = 40,
-  color = "#10b981",
+  color = "#84cc16",
   fillOpacity = 0.15,
 }: SparklineProps) {
   if (data.length < 2) {
     return (
       <div
-        className="flex items-center justify-center text-xs text-zinc-600"
+        className="flex items-center justify-center text-xs text-cream-dim font-mono"
         style={{ width, height }}
       >
         Not enough data

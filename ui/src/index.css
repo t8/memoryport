@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+@font-face {
+  font-family: "Upheaval TT BRK";
+  src: url("/fonts/upheavtt.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Switzer";
+  src: url("/fonts/Switzer-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("/fonts/DMMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-bg: #0d0d0d;
+  --color-surface: #1a1a1a;
+  --color-surface-hover: #222222;
+  --color-border: rgba(255, 244, 224, 0.12);
+  --color-border-hover: rgba(255, 244, 224, 0.25);
+  --color-cream: #fff4e0;
+  --color-cream-muted: rgba(255, 244, 224, 0.5);
+  --color-cream-dim: rgba(255, 244, 224, 0.3);
+  --color-accent: #84cc16;
+  --color-error: #ef4444;
+  --font-sans: "Switzer", "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "DM Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Upheaval TT BRK", monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-cream);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-cream);
+  color: var(--color-bg);
+}

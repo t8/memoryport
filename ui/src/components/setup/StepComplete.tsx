@@ -50,39 +50,39 @@ export default function StepComplete({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold">Ready to go</h2>
-        <p className="text-zinc-400 text-sm mt-1">
+        <h2 className="text-xl font-semibold text-cream">Ready to go</h2>
+        <p className="text-cream-muted text-sm mt-1">
           Here&apos;s what we&apos;ll set up:
         </p>
       </div>
 
       <div className="space-y-2 text-sm">
         <div className="flex items-center gap-2">
-          <Check size={14} className="text-emerald-400" />
-          <span>
+          <Check size={14} className="text-accent" />
+          <span className="text-cream">
             Embedding: <strong>{provider}</strong> / {model} ({dimensions}d)
           </span>
         </div>
         {ucApiKey && (
           <div className="flex items-center gap-2">
-            <Check size={14} className="text-emerald-400" />
-            <span>Arweave Pro storage enabled</span>
+            <Check size={14} className="text-accent" />
+            <span className="text-cream">Arweave Pro storage enabled</span>
           </div>
         )}
         <div className="flex items-center gap-2">
-          <Check size={14} className="text-emerald-400" />
-          <span>Config at ~/.memoryport/uc.toml</span>
+          <Check size={14} className="text-accent" />
+          <span className="text-cream font-mono">Config at ~/.memoryport/uc.toml</span>
         </div>
       </div>
 
       {error && (
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-error">{error}</p>
       )}
 
       <button
         onClick={handleLaunch}
         disabled={status === "writing" || status === "starting" || status === "done"}
-        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2"
+        className="w-full py-3 bg-cream text-bg hover:bg-cream/90 disabled:opacity-50 text-sm font-medium transition-colors flex items-center justify-center gap-2"
       >
         {status === "writing" && <><Loader2 size={16} className="animate-spin" /> Writing config...</>}
         {status === "starting" && <><Loader2 size={16} className="animate-spin" /> Starting engine...</>}
