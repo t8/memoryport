@@ -55,31 +55,6 @@ cargo build --release
 cd ui && pnpm install && pnpm build  # Dashboard
 ```
 
-## How It Works
-
-```
-User sends a message (Claude Code, Open WebUI, Cursor, terminal, API)
-  │
-  ▼
-Memoryport proxy intercepts transparently
-  │
-  ├─ Search stored memory for relevant context
-  │   ├─ Gate 1: Skip greetings/commands (0ms)
-  │   ├─ Gate 2: Embedding routing (0ms marginal)
-  │   └─ Gate 3: Drop low-quality results
-  │
-  ├─ Inject relevant context into the message
-  │
-  ├─ Forward to LLM (Anthropic, OpenAI, Ollama)
-  │
-  ├─ Capture both user message + assistant response
-  │   ├─ Sanitize (strip system prompts, internal commands)
-  │   ├─ Embed via configured provider
-  │   └─ Store in LanceDB + optionally sync to Arweave
-  │
-  └─ Return response to user
-```
-
 ## Supported Integrations
 
 | Tool | Method | Setup |
@@ -97,6 +72,47 @@ The proxy handles all three API formats on a single port (9191):
 - **Anthropic** `/v1/messages`
 - **OpenAI** `/v1/chat/completions`
 - **Ollama** `/api/chat`, `/api/generate`, `/api/tags`, and all `/api/*` routes
+
+## How It Works
+
+Memoryport supports two retrieval modes, configurable per-request:
+
+### Single-turn (default)
+
+```
+User sends a message
+  │
+  ▼
+Proxy intercepts transparently
+  │
+  ├─ Quality gating (skip greetings, commands, trivial queries)
+  ├─ Search memory for relevant context
+  ├─ Inject context into the message as plain text
+  ├─ Forward to LLM (Anthropic, OpenAI, Ollama)
+  ├─ Capture user message + assistant response
+  │   ├─ Sanitize (strip system prompts, internal commands)
+  │   ├─ Embed and store in LanceDB
+  │   └─ Optionally sync to Arweave (permanent storage)
+  └─ Return response to user
+```
+
+### Multi-turn (agentic retrieval)
+
+```
+User sends a message
+  │
+  ▼
+Proxy injects a memory search tool into the request
+  │
+  ├─ LLM decides what to search for and calls the tool
+  ├─ Proxy executes the search, returns results to LLM
+  ├─ LLM may search again (up to max_rounds)
+  ├─ LLM produces final response with full context
+  ├─ Capture and store conversation
+  └─ Return response to user
+```
+
+Multi-turn lets the model iteratively refine its memory queries — useful for complex questions that need multiple pieces of context. Toggle between modes in the dashboard Settings or via `[proxy.agentic] enabled` in config. See the [AMP specification](https://github.com/t8/amp-spec) for the protocol details.
 
 ## Dashboard
 
@@ -239,21 +255,6 @@ curl -X POST http://localhost:8080/v1/query \
   -H "Content-Type: application/json" \
   -d '{"query": "How does Arweave pricing work?"}'
 ```
-
-## Cost
-
-Arweave storage is permanent and pay-once (~$7/GB):
-
-| Usage | Size | Cost |
-|-------|------|------|
-| 1 conversation turn | ~1 KB | $0.000007 |
-| 1 month heavy usage | ~15 MB | $0.11 |
-| 1 year heavy usage | ~180 MB | $1.26 |
-| Power user: 5 years | ~1 GB | $7.00 |
-
-Chunks under 100 KiB are **free** via ar.io Turbo.
-
-Without Arweave configured, memories are stored locally only (free, no limit).
 
 ## Benchmarks
 
