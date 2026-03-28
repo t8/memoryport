@@ -171,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
             max_tokens,
         } => {
             let context = engine
-                .query(&text, &user_id, session_id.as_deref(), max_tokens)
+                .query(&text, &user_id, session_id.as_deref(), max_tokens, None)
                 .await?;
 
             if context.chunks_included == 0 {
@@ -192,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
             top_k,
         } => {
             let results = engine
-                .retrieve(&text, &user_id, session_id.as_deref())
+                .retrieve(&text, &user_id, session_id.as_deref(), None)
                 .await?;
 
             if results.is_empty() {

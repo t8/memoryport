@@ -16,7 +16,7 @@ pub async fn query(
     let engine = state.pool.get_or_create(&user.user_id).await?;
 
     let context = engine
-        .query(&req.query, &user.user_id, req.session_id.as_deref(), req.max_tokens)
+        .query(&req.query, &user.user_id, req.session_id.as_deref(), req.max_tokens, req.reference_time)
         .await?;
 
     Ok(Json(QueryResponse {

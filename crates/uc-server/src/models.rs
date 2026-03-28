@@ -20,6 +20,7 @@ pub struct QueryRequest {
     pub session_id: Option<String>,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    pub reference_time: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +30,7 @@ pub struct RetrieveRequest {
     pub session_id: Option<String>,
     #[serde(default = "default_top_k")]
     pub top_k: usize,
+    pub reference_time: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

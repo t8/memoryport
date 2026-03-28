@@ -60,9 +60,13 @@ impl Retriever {
         query: &str,
         user_id: &str,
         active_session_id: Option<&str>,
+        reference_time: Option<i64>,
     ) -> Result<Vec<SearchResult>, RetrieverError> {
         // ── Gate 1: Rule-based ──
-        let signals = analyzer::analyze_query(query);
+        let signals = match reference_time {
+            Some(t) => analyzer::analyze_query_at(query, t),
+            None => analyzer::analyze_query(query),
+        };
 
         if self.config.gating_enabled {
             match signals.decision {
@@ -197,9 +201,13 @@ impl Retriever {
         query: &str,
         user_id: &str,
         active_session_id: Option<&str>,
+        reference_time: Option<i64>,
     ) -> Result<Vec<SearchResult>, RetrieverError> {
         // ── Gate 1: Rule-based ──
-        let signals = analyzer::analyze_query(query);
+        let signals = match reference_time {
+            Some(t) => analyzer::analyze_query_at(query, t),
+            None => analyzer::analyze_query(query),
+        };
 
         if self.config.gating_enabled {
             match signals.decision {
@@ -386,6 +394,18 @@ impl Retriever {
                 return Ok(Vec::new());
             }
         }
+
+        // Session diversity: cap chunks per session to ensure broad coverage
+        let max_per_session = 5;
+        let mut session_counts: HashMap<String, usize> = HashMap::new();
+        let results: Vec<SearchResult> = results
+            .into_iter()
+            .filter(|r| {
+                let count = session_counts.entry(r.session_id.clone()).or_default();
+                *count += 1;
+                *count <= max_per_session
+            })
+            .collect();
 
         debug!(total = results.len(), "final hybrid results after gating");
         Ok(results)

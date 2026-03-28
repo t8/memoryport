@@ -17,7 +17,7 @@ pub async fn retrieve(
 
     // Use direct search (bypasses gating) since the user explicitly asked to search
     let results = engine
-        .search(&req.query, &user.user_id, req.top_k)
+        .search(&req.query, &user.user_id, req.top_k, req.reference_time)
         .await?;
 
     let results: Vec<RetrieveResult> = results

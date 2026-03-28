@@ -127,9 +127,17 @@ def query_retrieval(question: dict, server: str, top_k: int = 50) -> dict:
 
     start = time.time()
     try:
+        body = {"query": query_text, "top_k": top_k}
+        # Pass the question date as reference_time so temporal filtering
+        # works relative to the question's date, not the current date
+        question_date = question.get("question_date")
+        if question_date:
+            ref_ts = _parse_session_date(question_date)
+            if ref_ts:
+                body["reference_time"] = ref_ts
         resp = requests.post(
             f"{server}/v1/retrieve",
-            json={"query": query_text, "top_k": top_k},
+            json=body,
             timeout=60,
         )
         latency_ms = (time.time() - start) * 1000

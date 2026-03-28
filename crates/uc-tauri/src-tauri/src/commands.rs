@@ -133,7 +133,7 @@ pub async fn retrieve(
     let top_k = top_k.unwrap_or(50);
     rt.0.spawn(async move {
         let results = engine
-            .retrieve(&query, "default", None)
+            .retrieve(&query, "default", None, None)
             .await
             .map_err(|e| e.to_string())?;
         Ok(results

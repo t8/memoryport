@@ -175,7 +175,7 @@ impl UcMcpServer {
 
         match self
             .engine
-            .query(&params.query, user_id, params.session_id.as_deref(), max_tokens)
+            .query(&params.query, user_id, params.session_id.as_deref(), max_tokens, None)
             .await
         {
             Ok(ctx) if ctx.chunks_included == 0 => "No matching context found.".into(),
@@ -191,7 +191,7 @@ impl UcMcpServer {
 
         match self
             .engine
-            .retrieve(&params.query, user_id, params.session_id.as_deref())
+            .retrieve(&params.query, user_id, params.session_id.as_deref(), None)
             .await
         {
             Ok(results) => {

@@ -336,7 +336,7 @@ async fn execute_search(engine: &uc_core::Engine, user_id: &str, args: &Value) -
         .and_then(|m| m.as_u64())
         .unwrap_or(20) as u32;
 
-    match engine.search(query, user_id, max_results as usize).await {
+    match engine.search(query, user_id, max_results as usize, None).await {
         Ok(results) if results.is_empty() => "No matching results found.".into(),
         Ok(results) => {
             let items: Vec<String> = results

@@ -51,7 +51,7 @@ pub async fn proxy_messages(
 
     // 2. Search for relevant context, excluding current session
     let current_session = state.sessions.get_session("anthropic").await;
-    let context = match state.engine.search(&clean_query, &state.user_id, 20).await {
+    let context = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
         Ok(ref results) => {
             let clean: Vec<_> = results
                 .iter()

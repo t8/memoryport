@@ -440,11 +440,12 @@ impl Engine {
         user_id: &str,
         active_session_id: Option<&str>,
         max_tokens: u32,
+        reference_time: Option<i64>,
     ) -> Result<AssembledContext, EngineError> {
         // 1. Hybrid retrieve (chunks + facts with RRF fusion)
         let candidates = self
             .retriever
-            .retrieve_hybrid(text, user_id, active_session_id)
+            .retrieve_hybrid(text, user_id, active_session_id, reference_time)
             .await?;
 
         // 2. Rerank
@@ -466,10 +467,11 @@ impl Engine {
         text: &str,
         user_id: &str,
         active_session_id: Option<&str>,
+        reference_time: Option<i64>,
     ) -> Result<Vec<SearchResult>, EngineError> {
         let candidates = self
             .retriever
-            .retrieve_hybrid(text, user_id, active_session_id)
+            .retrieve_hybrid(text, user_id, active_session_id, reference_time)
             .await?;
 
         let ranked = self
@@ -487,9 +489,13 @@ impl Engine {
         text: &str,
         user_id: &str,
         top_k: usize,
+        reference_time: Option<i64>,
     ) -> Result<Vec<SearchResult>, EngineError> {
         // Run analyzer to detect signals (session refs, temporal)
-        let signals = analyzer::analyze_query(text);
+        let signals = match reference_time {
+            Some(t) => analyzer::analyze_query_at(text, t),
+            None => analyzer::analyze_query(text),
+        };
 
         let query_vector = self.embeddings.embed(text).await?;
         let params = models::QueryParams {

@@ -209,7 +209,7 @@ pub async fn proxy_completions(
     let current_session = state.sessions.get_session("openai").await;
 
     // Search for context (best-effort), excluding current session
-    let context = match state.engine.search(&clean_query, &state.user_id, 20).await {
+    let context = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
         Ok(ref results) => {
             let clean: Vec<_> = results
                 .iter()
@@ -486,7 +486,7 @@ pub async fn forward_ollama_any(
     let modified_body = if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
         let clean_query = crate::anthropic::sanitize_query_pub(&user_msg);
         let current_session = state.sessions.get_session("ollama").await;
-        let injected = match state.engine.search(&clean_query, &state.user_id, 20).await {
+        let injected = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
             Ok(ref results) => {
                 let clean: Vec<_> = results
                     .iter()
