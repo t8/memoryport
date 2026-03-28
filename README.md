@@ -279,12 +279,12 @@ Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchma
 | Category | Accuracy | Session Recall | n |
 |----------|----------|----------------|---|
 | single-session-assistant | **100%** | 100% | 11 |
-| single-session-preference | **100%** | 83% | 6 |
+| single-session-preference | **83.3%** | 83% | 6 |
 | single-session-user | **85.7%** | 64% | 14 |
 | knowledge-update | **62.5%** | 94% | 16 |
-| temporal-reasoning | **42.3%** | 27% | 26 |
-| multi-session | **40.7%** | 52% | 27 |
-| **Overall** | **61.0%** | **64.8%** | **100** |
+| temporal-reasoning | **50.0%** | 27% | 26 |
+| multi-session | **44.4%** | 52% | 27 |
+| **Overall** | **63.0%** | **64.8%** | **100** |
 
 **Session Recall** (48-question oracle split, local embeddings):
 
@@ -368,7 +368,7 @@ How Memoryport compares to other AI memory tools:
 | **Open protocol** | [AMP](https://github.com/t8/amp-spec) | No | No |
 | **Self-hosting** | Default (runs locally) | Enterprise only | Default (runs locally) |
 | **Scale benchmark** | 500M tokens, 294ms p50 | Not published | Not published |
-| **Retrieval accuracy** | 61% answer accuracy, 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
+| **Retrieval accuracy** | 63% answer accuracy, 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
 | **Permanent storage** | Arweave (pay once, stored forever) | No | No |
 | **License** | Apache-2.0 | MIT | AGPL-3.0 |
 

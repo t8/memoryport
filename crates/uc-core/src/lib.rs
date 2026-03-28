@@ -509,6 +509,9 @@ impl Engine {
         };
         let mut results = self.index.search(&query_vector, &params).await?;
 
+        let mut seen: std::collections::HashSet<String> =
+            results.iter().map(|r| r.chunk_id.clone()).collect();
+
         // Temporal fallback: if temporal filter yielded few results, retry without it.
         if signals.temporal_range.is_some() && results.len() < top_k / 2 {
             let fallback_params = models::QueryParams {
@@ -519,8 +522,6 @@ impl Engine {
                 time_range: None,
             };
             let fallback = self.index.search(&query_vector, &fallback_params).await?;
-            let mut seen: std::collections::HashSet<String> =
-                results.iter().map(|r| r.chunk_id.clone()).collect();
             for r in fallback {
                 if seen.insert(r.chunk_id.clone()) {
                     results.push(r);
@@ -528,8 +529,9 @@ impl Engine {
             }
         }
 
-        // Sort all results by score descending, truncate to top_k
+        // Sort by score descending
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
         results.truncate(top_k);
         Ok(results)
     }
@@ -671,4 +673,5 @@ fn create_embedding_provider(config: &config::EmbeddingsConfig) -> Arc<dyn Embed
         }
     }
 }
+
 

@@ -15,9 +15,9 @@ If the index is already ingested for the same dataset, add --skip-ingest.
 # This is the BASELINE configuration. The agent modifies this dict.
 
 CONFIG = {
-    # ── BEST CONFIG (Exp 8): 61% accuracy, 64.75% session recall, 337ms p50 ──
+    # Base: Exp 8 config (61% accuracy)
     "retrieval": {
-        "similarity_top_k": 150,     # 3x default (was 50)
+        "similarity_top_k": 150,
         "min_relevance_score": 0.3,
         "recency_window": 20,
         "max_context_tokens": 50000,
@@ -27,10 +27,17 @@ CONFIG = {
         "gating_enabled": True,
     },
 
-    "context_chunks": 40,            # 2x default (was 20)
+    "context_chunks": 40,
     "prompt_style": "default",
-    "answer_model": "gpt-4o",        # gpt-4o >> gpt-4o-mini for reasoning
+    "answer_model": "gpt-4o",
     "judge_model": "gpt-4o-mini",
 
-    "description": "BEST: Exp 8 — top_k=150, temporal fallback, 40 context chunks, gpt-4o",
+    # EXPERIMENT 18: Rust sub-query decomposition in engine.search().
+    # Detects multi-entity comparisons ("A or B"), aggregation ("how many"),
+    # and temporal ordering queries. Extracts entities and runs parallel
+    # sub-queries to cover entities the primary embedding misses.
+    # No LLM needed — pure pattern matching.
+    "prompt_style": "default",
+
+    "description": "BEST: Exp 23 — Rust temporal fallback only, 63% accuracy, 342ms p50",
 }
