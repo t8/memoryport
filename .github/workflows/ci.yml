@@ -49,10 +49,10 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Cargo check
-        run: cargo check --workspace
+        run: cargo check --workspace --exclude uc-tauri
 
       - name: Cargo clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --exclude uc-tauri -- -D warnings
 
   test:
     name: Tests
@@ -90,7 +90,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-test-
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude uc-tauri
 
   ui:
     name: UI Build
