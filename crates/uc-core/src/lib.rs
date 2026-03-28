@@ -5,13 +5,17 @@ pub mod assembler;
 pub mod batcher;
 pub mod chunker;
 pub mod config;
+pub mod contradiction;
 pub mod crypto;
 pub mod enhancer;
+pub mod entities;
+pub mod facts;
 pub mod gate;
 pub mod graph;
 pub mod index;
 pub mod keystore;
 pub mod models;
+pub mod profile;
 pub mod rebuild;
 pub mod reranker;
 pub mod retriever;
@@ -306,6 +310,77 @@ impl Engine {
                     .collect();
                 index.insert(&entries, &user_id).await.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
 
+                // 4. Extract facts from chunks and store in facts table
+                let mut all_facts = Vec::new();
+                for chunk in &batch.chunks {
+                    let extraction = facts::extract_facts(
+                        &chunk.content,
+                        &chunk.id.to_string(),
+                        &chunk.session_id,
+                        &user_id,
+                        chunk.timestamp,
+                    );
+                    all_facts.extend(extraction.facts);
+                }
+
+                if !all_facts.is_empty() {
+                    // Embed fact content
+                    let fact_texts: Vec<&str> = all_facts.iter().map(|f| f.content.as_str()).collect();
+                    match embeddings.embed_batch(&fact_texts).await {
+                        Ok(fact_vectors) => {
+                            // Detect contradictions against existing facts
+                            for fact in &all_facts {
+                                let existing = index
+                                    .search_facts_by_predicate(&user_id, &fact.subject, &fact.predicate, true)
+                                    .await
+                                    .unwrap_or_default();
+
+                                let existing_as_facts: Vec<facts::Fact> = existing.iter().map(|r| facts::Fact {
+                                    id: uuid::Uuid::parse_str(&r.fact_id).unwrap_or_default(),
+                                    content: r.content.clone(),
+                                    subject: r.subject.clone(),
+                                    predicate: r.predicate.clone(),
+                                    object: r.object.clone(),
+                                    source_chunk_id: String::new(),
+                                    session_id: r.session_id.clone(),
+                                    user_id: user_id.clone(),
+                                    document_date: r.document_date,
+                                    event_date: r.event_date,
+                                    valid: r.valid,
+                                    superseded_by: None,
+                                    confidence: r.confidence,
+                                    created_at: 0,
+                                }).collect();
+
+                                let contradictions = contradiction::detect_contradictions(
+                                    std::slice::from_ref(fact),
+                                    &existing_as_facts,
+                                );
+
+                                for c in &contradictions {
+                                    let _ = index.mark_fact_superseded(&c.old_fact_id, &c.new_fact_id).await;
+                                    tracing::debug!(
+                                        old = %c.old_fact_id,
+                                        new = %c.new_fact_id,
+                                        reason = %c.reason,
+                                        "fact superseded"
+                                    );
+                                }
+                            }
+
+                            // Insert facts into LanceDB
+                            if let Err(e) = index.insert_facts(&all_facts, &fact_vectors).await {
+                                tracing::warn!(error = %e, "failed to insert facts (non-fatal)");
+                            } else {
+                                tracing::debug!(count = all_facts.len(), "extracted and stored facts");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "failed to embed facts (non-fatal)");
+                        }
+                    }
+                }
+
                 Ok(())
             })
         });
@@ -358,7 +433,7 @@ impl Engine {
         Ok(ids)
     }
 
-    /// Full retrieval pipeline: analyze → retrieve → rerank → assemble.
+    /// Full retrieval pipeline: hybrid retrieve → rerank → assemble.
     pub async fn query(
         &self,
         text: &str,
@@ -366,10 +441,10 @@ impl Engine {
         active_session_id: Option<&str>,
         max_tokens: u32,
     ) -> Result<AssembledContext, EngineError> {
-        // 1. Retrieve candidates
+        // 1. Hybrid retrieve (chunks + facts with RRF fusion)
         let candidates = self
             .retriever
-            .retrieve(text, user_id, active_session_id)
+            .retrieve_hybrid(text, user_id, active_session_id)
             .await?;
 
         // 2. Rerank
@@ -385,6 +460,7 @@ impl Engine {
     }
 
     /// Retrieve raw results without assembly (useful for debugging / CLI).
+    /// Uses hybrid retrieval (chunks + facts with RRF fusion).
     pub async fn retrieve(
         &self,
         text: &str,
@@ -393,7 +469,7 @@ impl Engine {
     ) -> Result<Vec<SearchResult>, EngineError> {
         let candidates = self
             .retriever
-            .retrieve(text, user_id, active_session_id)
+            .retrieve_hybrid(text, user_id, active_session_id)
             .await?;
 
         let ranked = self

@@ -62,7 +62,12 @@ pub fn assemble_context(
 }
 
 fn format_xml(results: &[&SearchResult], max_tokens: u32) -> String {
-    let mut out = String::from("<unlimited_context>\n");
+    // Inject current date so the LLM can reason about relative temporal references
+    let now = Utc::now();
+    let mut out = format!(
+        "<unlimited_context date=\"{}\">\n",
+        now.format("%Y-%m-%d")
+    );
 
     // Group by session for conversation chunks, keep others flat
     let mut sessions: BTreeMap<&str, Vec<&SearchResult>> = BTreeMap::new();

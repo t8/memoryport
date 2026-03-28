@@ -1,8 +1,8 @@
 use crate::models::{Chunk, ChunkType, QueryParams, SearchResult, SessionSummary};
 use arrow_array::types::Float32Type;
 use arrow_array::{
-    Array, ArrayRef, FixedSizeListArray, Int64Array, RecordBatch, RecordBatchIterator,
-    StringArray, UInt32Array,
+    Array, ArrayRef, BooleanArray, FixedSizeListArray, Float32Array, Int64Array, RecordBatch,
+    RecordBatchIterator, StringArray, UInt32Array,
 };
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use futures::TryStreamExt;
@@ -23,6 +23,7 @@ pub enum IndexError {
 }
 
 const TABLE_NAME: &str = "chunks";
+const FACTS_TABLE_NAME: &str = "facts";
 
 /// Build the Arrow schema for the chunks table.
 pub fn build_schema(dimensions: usize) -> SchemaRef {
@@ -49,12 +50,57 @@ pub fn build_schema(dimensions: usize) -> SchemaRef {
     ]))
 }
 
+/// Build the Arrow schema for the facts table.
+pub fn build_facts_schema(dimensions: usize) -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                dimensions as i32,
+            ),
+            true,
+        ),
+        Field::new("fact_id", DataType::Utf8, false),
+        Field::new("content", DataType::Utf8, false),
+        Field::new("subject", DataType::Utf8, false),
+        Field::new("predicate", DataType::Utf8, false),
+        Field::new("object", DataType::Utf8, false),
+        Field::new("source_chunk_id", DataType::Utf8, false),
+        Field::new("session_id", DataType::Utf8, false),
+        Field::new("user_id", DataType::Utf8, false),
+        Field::new("document_date", DataType::Int64, false),
+        Field::new("event_date", DataType::Int64, true),
+        Field::new("valid", DataType::Boolean, false),
+        Field::new("superseded_by", DataType::Utf8, true),
+        Field::new("confidence", DataType::Float32, false),
+        Field::new("created_at", DataType::Int64, false),
+    ]))
+}
+
+/// Result from a vector or filtered search against the facts table.
+#[derive(Debug, Clone)]
+pub struct FactSearchResult {
+    pub fact_id: String,
+    pub content: String,
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    pub session_id: String,
+    pub document_date: i64,
+    pub event_date: Option<i64>,
+    pub valid: bool,
+    pub confidence: f32,
+    pub score: f32,
+}
+
 /// Manages the LanceDB index for chunk storage and retrieval.
 pub struct Index {
-    #[allow(dead_code)]
     db: lancedb::Connection,
     table: lancedb::Table,
+    facts_table: Option<lancedb::Table>,
     dimensions: usize,
+    #[allow(dead_code)]
     last_checkout: std::sync::atomic::AtomicU64,
     insert_count: std::sync::atomic::AtomicU32,
 }
@@ -97,6 +143,32 @@ impl Index {
             .execute()
             .await;
 
+        // Open or lazily defer creation of the facts table
+        let facts_table = if table_names.contains(&FACTS_TABLE_NAME.to_string()) {
+            let ft = db.open_table(FACTS_TABLE_NAME).execute().await?;
+            // Create scalar indexes for fast filtered queries (idempotent)
+            let _ = ft
+                .create_index(&["user_id"], lancedb::index::Index::BTree(Default::default()))
+                .execute()
+                .await;
+            let _ = ft
+                .create_index(&["subject"], lancedb::index::Index::BTree(Default::default()))
+                .execute()
+                .await;
+            let _ = ft
+                .create_index(&["predicate"], lancedb::index::Index::BTree(Default::default()))
+                .execute()
+                .await;
+            let _ = ft
+                .create_index(&["valid"], lancedb::index::Index::BTree(Default::default()))
+                .execute()
+                .await;
+            Some(ft)
+        } else {
+            // Don't create until first insert — keeps backward compatible
+            None
+        };
+
         // Compact fragmented data on startup if needed.
         // Each insert creates a new fragment; too many fragments degrades query performance.
         let row_count = table.count_rows(None).await.unwrap_or(0);
@@ -115,6 +187,7 @@ impl Index {
         Ok(Self {
             db,
             table,
+            facts_table,
             dimensions,
             last_checkout: std::sync::atomic::AtomicU64::new(0),
             insert_count: std::sync::atomic::AtomicU32::new(0),
@@ -349,6 +422,233 @@ impl Index {
         self.table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await?;
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Facts table operations
+    // -----------------------------------------------------------------------
+
+    /// Lazily ensure the facts table exists, creating it on first use.
+    async fn ensure_facts_table(&self) -> Result<lancedb::Table, IndexError> {
+        if let Some(ref ft) = self.facts_table {
+            return Ok(ft.clone());
+        }
+        let schema = build_facts_schema(self.dimensions);
+        let ft = self.db.create_empty_table(FACTS_TABLE_NAME, schema).execute().await?;
+        // Create scalar indexes for fast filtered queries
+        let _ = ft
+            .create_index(&["user_id"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+        let _ = ft
+            .create_index(&["subject"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+        let _ = ft
+            .create_index(&["predicate"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+        let _ = ft
+            .create_index(&["valid"], lancedb::index::Index::BTree(Default::default()))
+            .execute()
+            .await;
+        Ok(ft)
+    }
+
+    /// Insert facts with their embedding vectors into the facts table.
+    pub async fn insert_facts(
+        &self,
+        facts: &[crate::facts::Fact],
+        vectors: &[Vec<f32>],
+    ) -> Result<(), IndexError> {
+        if facts.is_empty() {
+            return Ok(());
+        }
+
+        let ft = self.ensure_facts_table().await?;
+        let schema = build_facts_schema(self.dimensions);
+        let batch = build_facts_record_batch(facts, vectors, &schema, self.dimensions)?;
+
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
+        ft.add(batches).execute().await?;
+
+        debug!(count = facts.len(), "inserted facts into index");
+        Ok(())
+    }
+
+    /// Vector similarity search against the facts table.
+    pub async fn search_facts(
+        &self,
+        query_vector: &[f32],
+        user_id: &str,
+        top_k: usize,
+        valid_only: bool,
+    ) -> Result<Vec<FactSearchResult>, IndexError> {
+        let ft = match &self.facts_table {
+            Some(ft) => ft,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut filter = format!("user_id = '{}'", sanitize_sql(user_id));
+        if valid_only {
+            filter.push_str(" AND valid = true");
+        }
+
+        ft.checkout_latest().await?;
+        let results: Vec<RecordBatch> = ft
+            .query()
+            .nearest_to(query_vector)?
+            .only_if(filter)
+            .limit(top_k)
+            .select(lancedb::query::Select::columns(&[
+                "fact_id", "content", "subject", "predicate", "object",
+                "session_id", "document_date", "event_date", "valid",
+                "confidence",
+            ]))
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut search_results = Vec::new();
+        for batch in &results {
+            let parsed = parse_fact_search_results(batch)?;
+            search_results.extend(parsed);
+        }
+
+        Ok(search_results)
+    }
+
+    /// Mark a fact as superseded by a newer fact.
+    pub async fn mark_fact_superseded(
+        &self,
+        fact_id: &str,
+        superseded_by: &str,
+    ) -> Result<(), IndexError> {
+        let ft = match &self.facts_table {
+            Some(ft) => ft,
+            None => return Err(IndexError::NoResults),
+        };
+
+        ft.checkout_latest().await?;
+
+        // Read the existing row
+        let filter = format!("fact_id = '{}'", sanitize_sql(fact_id));
+        let rows: Vec<RecordBatch> = ft
+            .query()
+            .only_if(&filter)
+            .limit(1)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        if rows.is_empty() || rows[0].num_rows() == 0 {
+            return Err(IndexError::NoResults);
+        }
+
+        // Delete the old row and re-insert with updated fields
+        ft.delete(&filter).await?;
+
+        let old = &rows[0];
+        let n = old.num_rows();
+        // Rebuild the batch with valid=false and superseded_by set
+        let schema = build_facts_schema(self.dimensions);
+
+        // Carry forward all columns from the old batch
+        let vector_col = old.column_by_name("vector").unwrap().clone();
+        let fact_id_col = old.column_by_name("fact_id").unwrap().clone();
+        let content_col = old.column_by_name("content").unwrap().clone();
+        let subject_col = old.column_by_name("subject").unwrap().clone();
+        let predicate_col = old.column_by_name("predicate").unwrap().clone();
+        let object_col = old.column_by_name("object").unwrap().clone();
+        let source_chunk_id_col = old.column_by_name("source_chunk_id").unwrap().clone();
+        let session_id_col = old.column_by_name("session_id").unwrap().clone();
+        let user_id_col = old.column_by_name("user_id").unwrap().clone();
+        let document_date_col = old.column_by_name("document_date").unwrap().clone();
+        let event_date_col = old.column_by_name("event_date").unwrap().clone();
+        let confidence_col = old.column_by_name("confidence").unwrap().clone();
+        let created_at_col = old.column_by_name("created_at").unwrap().clone();
+
+        // Build new valid and superseded_by columns
+        let valid_arr = Arc::new(BooleanArray::from(vec![false; n])) as ArrayRef;
+        let superseded_arr = Arc::new(StringArray::from(
+            (0..n).map(|_| Some(superseded_by)).collect::<Vec<Option<&str>>>(),
+        )) as ArrayRef;
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                vector_col,
+                fact_id_col,
+                content_col,
+                subject_col,
+                predicate_col,
+                object_col,
+                source_chunk_id_col,
+                session_id_col,
+                user_id_col,
+                document_date_col,
+                event_date_col,
+                valid_arr,
+                superseded_arr,
+                confidence_col,
+                created_at_col,
+            ],
+        ).map_err(|e| IndexError::Arrow(e))?;
+
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
+        ft.add(batches).execute().await?;
+
+        debug!(fact_id, superseded_by, "marked fact as superseded");
+        Ok(())
+    }
+
+    /// Search facts by subject+predicate for contradiction detection.
+    pub async fn search_facts_by_predicate(
+        &self,
+        user_id: &str,
+        subject: &str,
+        predicate: &str,
+        valid_only: bool,
+    ) -> Result<Vec<FactSearchResult>, IndexError> {
+        let ft = match &self.facts_table {
+            Some(ft) => ft,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut filter = format!(
+            "user_id = '{}' AND subject = '{}' AND predicate = '{}'",
+            sanitize_sql(user_id),
+            sanitize_sql(subject),
+            sanitize_sql(predicate),
+        );
+        if valid_only {
+            filter.push_str(" AND valid = true");
+        }
+
+        ft.checkout_latest().await?;
+        let results: Vec<RecordBatch> = ft
+            .query()
+            .only_if(filter)
+            .limit(1000)
+            .select(lancedb::query::Select::columns(&[
+                "fact_id", "content", "subject", "predicate", "object",
+                "session_id", "document_date", "event_date", "valid",
+                "confidence",
+            ]))
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut search_results = Vec::new();
+        for batch in &results {
+            let parsed = parse_fact_search_results(batch)?;
+            search_results.extend(parsed);
+        }
+
+        Ok(search_results)
+    }
 }
 
 /// Build an Arrow RecordBatch from chunk entries.
@@ -486,4 +786,133 @@ fn parse_search_results(batch: &RecordBatch) -> Result<Vec<SearchResult>, IndexE
 /// Basic SQL string sanitization to prevent injection.
 fn sanitize_sql(s: &str) -> String {
     s.replace('\'', "''")
+}
+
+/// Build an Arrow RecordBatch from fact entries and their embedding vectors.
+fn build_facts_record_batch(
+    facts: &[crate::facts::Fact],
+    vectors: &[Vec<f32>],
+    schema: &SchemaRef,
+    dimensions: usize,
+) -> Result<RecordBatch, IndexError> {
+    let vector_array = FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+        vectors.iter().map(|vec| {
+            Some(vec.iter().copied().map(Some).collect::<Vec<_>>())
+        }),
+        dimensions as i32,
+    );
+
+    let fact_ids: Vec<String> = facts.iter().map(|f| f.id.to_string()).collect();
+    let contents: Vec<&str> = facts.iter().map(|f| f.content.as_str()).collect();
+    let subjects: Vec<&str> = facts.iter().map(|f| f.subject.as_str()).collect();
+    let predicates: Vec<&str> = facts.iter().map(|f| f.predicate.as_str()).collect();
+    let objects: Vec<&str> = facts.iter().map(|f| f.object.as_str()).collect();
+    let source_chunk_ids: Vec<&str> = facts.iter().map(|f| f.source_chunk_id.as_str()).collect();
+    let session_ids: Vec<&str> = facts.iter().map(|f| f.session_id.as_str()).collect();
+    let user_ids: Vec<&str> = facts.iter().map(|f| f.user_id.as_str()).collect();
+    let document_dates: Vec<i64> = facts.iter().map(|f| f.document_date).collect();
+    let event_dates: Vec<Option<i64>> = facts.iter().map(|f| f.event_date).collect();
+    let valids: Vec<bool> = facts.iter().map(|f| f.valid).collect();
+    let superseded_bys: Vec<Option<&str>> = facts.iter().map(|f| f.superseded_by.as_deref()).collect();
+    let confidences: Vec<f32> = facts.iter().map(|f| f.confidence).collect();
+    let created_ats: Vec<i64> = facts.iter().map(|f| f.created_at).collect();
+
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(vector_array) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(fact_ids.iter().map(|s| s.as_str()))) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(contents.iter().copied())) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(subjects.iter().copied())) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(predicates.iter().copied())) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(objects.iter().copied())) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(source_chunk_ids.iter().copied())) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(session_ids.iter().copied())) as ArrayRef,
+            Arc::new(StringArray::from_iter_values(user_ids.iter().copied())) as ArrayRef,
+            Arc::new(Int64Array::from(document_dates)) as ArrayRef,
+            Arc::new(Int64Array::from(event_dates)) as ArrayRef,
+            Arc::new(BooleanArray::from(valids)) as ArrayRef,
+            Arc::new(StringArray::from(superseded_bys)) as ArrayRef,
+            Arc::new(Float32Array::from(confidences)) as ArrayRef,
+            Arc::new(Int64Array::from(created_ats)) as ArrayRef,
+        ],
+    ).map_err(|e| IndexError::Arrow(e))?;
+
+    Ok(batch)
+}
+
+/// Parse fact search result RecordBatches into FactSearchResult structs.
+fn parse_fact_search_results(batch: &RecordBatch) -> Result<Vec<FactSearchResult>, IndexError> {
+    let n = batch.num_rows();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+
+    let fact_ids = batch
+        .column_by_name("fact_id")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .ok_or(IndexError::NoResults)?;
+    let contents = batch
+        .column_by_name("content")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .ok_or(IndexError::NoResults)?;
+    let subjects = batch
+        .column_by_name("subject")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .ok_or(IndexError::NoResults)?;
+    let predicates = batch
+        .column_by_name("predicate")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .ok_or(IndexError::NoResults)?;
+    let objects = batch
+        .column_by_name("object")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .ok_or(IndexError::NoResults)?;
+    let session_ids = batch
+        .column_by_name("session_id")
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .ok_or(IndexError::NoResults)?;
+    let document_dates = batch
+        .column_by_name("document_date")
+        .and_then(|c| c.as_any().downcast_ref::<Int64Array>())
+        .ok_or(IndexError::NoResults)?;
+    let event_dates = batch
+        .column_by_name("event_date")
+        .and_then(|c| c.as_any().downcast_ref::<Int64Array>());
+    let valids = batch
+        .column_by_name("valid")
+        .and_then(|c| c.as_any().downcast_ref::<BooleanArray>())
+        .ok_or(IndexError::NoResults)?;
+    let confidences = batch
+        .column_by_name("confidence")
+        .and_then(|c| c.as_any().downcast_ref::<Float32Array>())
+        .ok_or(IndexError::NoResults)?;
+
+    // LanceDB adds a _distance column for vector search results
+    let distances = batch
+        .column_by_name("_distance")
+        .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
+    let mut results = Vec::with_capacity(n);
+    for i in 0..n {
+        let event_date = event_dates
+            .and_then(|ed| if ed.is_null(i) { None } else { Some(ed.value(i)) });
+        let score = distances.map(|d| 1.0 - d.value(i)).unwrap_or(0.0);
+
+        results.push(FactSearchResult {
+            fact_id: fact_ids.value(i).to_string(),
+            content: contents.value(i).to_string(),
+            subject: subjects.value(i).to_string(),
+            predicate: predicates.value(i).to_string(),
+            object: objects.value(i).to_string(),
+            session_id: session_ids.value(i).to_string(),
+            document_date: document_dates.value(i),
+            event_date,
+            valid: valids.value(i),
+            confidence: confidences.value(i),
+            score,
+        });
+    }
+
+    Ok(results)
 }

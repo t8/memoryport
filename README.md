@@ -333,6 +333,27 @@ python3 tests/latency/mock_upstream.py --port 8199 &
 python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://127.0.0.1:8199
 ```
 
+## Comparison
+
+How Memoryport compares to other AI memory tools:
+
+|  | **Memoryport** | **Supermemory** | **claude-mem** |
+|--|---------------|----------------|----------------|
+| **Architecture** | Local-first + permanent backup | Cloud SaaS | Local plugin |
+| **Language** | Rust | TypeScript | TypeScript |
+| **Storage** | LanceDB (local) + Arweave (permanent) | PostgreSQL (their cloud) | SQLite (local only) |
+| **Encryption** | AES-256-GCM per-batch, Argon2id key | Delegated to cloud infra | None |
+| **Data ownership** | You (local + on-chain) | Them (cloud) | You (local files) |
+| **Multi-tool** | Proxy + MCP (Claude Code, Cursor, Ollama, OpenAI) | API-based | Claude Code only |
+| **Capture method** | Transparent API proxy (zero-config) | Explicit API calls | Lifecycle hooks |
+| **Desktop app** | Signed Tauri native app | None (web only) | Localhost web viewer |
+| **Open protocol** | [AMP](https://github.com/t8/amp-spec) | No | No |
+| **Self-hosting** | Default (runs locally) | Enterprise only | Default (runs locally) |
+| **Scale benchmark** | 500M tokens, 294ms p50 | Not published | Not published |
+| **Retrieval accuracy** | 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
+| **Permanent storage** | Arweave (pay once, stored forever) | No | No |
+| **License** | Apache-2.0 | MIT | AGPL-3.0 |
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
