@@ -498,16 +498,39 @@ impl Engine {
         };
 
         let query_vector = self.embeddings.embed(text).await?;
+
+        // Primary search (with temporal range if detected)
         let params = models::QueryParams {
             user_id: user_id.to_string(),
             top_k,
-            session_id: signals.explicit_session,
+            session_id: signals.explicit_session.clone(),
             chunk_type: None,
-            // Apply temporal range for production use; benchmark data may have
-            // different timestamps so the filter may not match.
             time_range: signals.temporal_range,
         };
-        let results = self.index.search(&query_vector, &params).await?;
+        let mut results = self.index.search(&query_vector, &params).await?;
+
+        // Temporal fallback: if temporal filter yielded few results, retry without it.
+        if signals.temporal_range.is_some() && results.len() < top_k / 2 {
+            let fallback_params = models::QueryParams {
+                user_id: user_id.to_string(),
+                top_k,
+                session_id: signals.explicit_session.clone(),
+                chunk_type: None,
+                time_range: None,
+            };
+            let fallback = self.index.search(&query_vector, &fallback_params).await?;
+            let mut seen: std::collections::HashSet<String> =
+                results.iter().map(|r| r.chunk_id.clone()).collect();
+            for r in fallback {
+                if seen.insert(r.chunk_id.clone()) {
+                    results.push(r);
+                }
+            }
+        }
+
+        // Sort all results by score descending, truncate to top_k
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(top_k);
         Ok(results)
     }
 
@@ -648,3 +671,4 @@ fn create_embedding_provider(config: &config::EmbeddingsConfig) -> Arc<dyn Embed
         }
     }
 }
+

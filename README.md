@@ -272,9 +272,21 @@ All encrypted batches are fetched from the permanent storage network and re-inde
 
 ### LongMemEval (ICLR 2025)
 
-Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchmark for long-term memory in chat assistants. 500 curated questions across multi-session conversation histories.
+Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchmark for long-term memory in chat assistants. Tests retrieval and answer accuracy on the standard split (`longmemeval_s`) with ~115K token haystacks per question.
 
-**Session Recall** (did retrieval find the correct session?):
+**Answer Accuracy** (100-question balanced sample, gpt-4o reader, gpt-4o-mini judge):
+
+| Category | Accuracy | Session Recall | n |
+|----------|----------|----------------|---|
+| single-session-assistant | **100%** | 100% | 11 |
+| single-session-preference | **100%** | 83% | 6 |
+| single-session-user | **85.7%** | 64% | 14 |
+| knowledge-update | **62.5%** | 94% | 16 |
+| temporal-reasoning | **42.3%** | 27% | 26 |
+| multi-session | **40.7%** | 52% | 27 |
+| **Overall** | **61.0%** | **64.8%** | **100** |
+
+**Session Recall** (48-question oracle split, local embeddings):
 
 | Category | Recall | n |
 |----------|--------|---|
@@ -286,9 +298,7 @@ Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchma
 | temporal-reasoning | **87.5%** | 8 |
 | **Overall** | **97.9%** | **48** |
 
-For context, GPT-4o with naive RAG scores 30-70% on this benchmark.
-
-Tested with `nomic-embed-text` (768d, local via Ollama). No cloud APIs required.
+Key retrieval improvements: temporal fallback (retry without time filter when too few results), increased candidate pool (top_k=150), and expanded context window (40 chunks to reader). See `tests/longmemeval/autoresearch/results.tsv` for the full 13-experiment optimization log.
 
 ### Stress Test (10K chunks)
 
@@ -323,13 +333,21 @@ Single-turn overhead is dominated by embedding + LanceDB search. Multi-turn adds
 
 Run benchmarks yourself:
 ```bash
+# LongMemEval session recall (oracle split, fast)
+python3 tests/longmemeval/run_benchmark.py --questions 50 --dataset oracle
+
+# LongMemEval answer accuracy (standard split, requires OpenAI API key)
+python3 tests/longmemeval/run_answer_accuracy.py --questions 100 --dataset s --answer-model gpt-4o
+
+# Autoresearch optimization loop (iterates experiments overnight)
+python3 tests/longmemeval/autoresearch/prepare.py --questions 100
+
+# Stress test
 python3 tests/stress/generate.py --chunks 10000
 python3 tests/stress/benchmark.py
-python3 tests/longmemeval/run_benchmark.py --questions 50 --dataset oracle
 
 # Latency benchmark (requires mock upstream + proxy pointed at it)
 python3 tests/latency/mock_upstream.py --port 8199 &
-# Set upstream = "http://127.0.0.1:8199" in uc.toml, then start proxy on port 9292
 python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://127.0.0.1:8199
 ```
 
@@ -350,7 +368,7 @@ How Memoryport compares to other AI memory tools:
 | **Open protocol** | [AMP](https://github.com/t8/amp-spec) | No | No |
 | **Self-hosting** | Default (runs locally) | Enterprise only | Default (runs locally) |
 | **Scale benchmark** | 500M tokens, 294ms p50 | Not published | Not published |
-| **Retrieval accuracy** | 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
+| **Retrieval accuracy** | 61% answer accuracy, 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
 | **Permanent storage** | Arweave (pay once, stored forever) | No | No |
 | **License** | Apache-2.0 | MIT | AGPL-3.0 |
 
