@@ -25,6 +25,7 @@ pub async fn store(
         role,
         source_integration: Some("api".into()),
         source_model: None,
+        timestamp: req.timestamp,
     };
 
     let ids = engine.store(&req.text, params).await?;

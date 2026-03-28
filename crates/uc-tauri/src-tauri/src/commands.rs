@@ -171,6 +171,7 @@ pub async fn store_text(
             role: Some(uc_core::models::Role::User),
             source_integration: Some("desktop".into()),
             source_model: None,
+            timestamp: None,
         };
         let ids = engine
             .store(&text, params)

@@ -154,6 +154,7 @@ async fn main() -> anyhow::Result<()> {
                 role,
                 source_integration: Some("cli".into()),
                 source_model: None,
+                timestamp: None,
             };
             let ids = engine.store(&text, params).await?;
             engine.flush().await?;

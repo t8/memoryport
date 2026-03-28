@@ -150,6 +150,8 @@ pub struct StoreParams {
     pub role: Option<Role>,
     pub source_integration: Option<String>,
     pub source_model: Option<String>,
+    /// Optional timestamp override (ms since epoch). Defaults to now.
+    pub timestamp: Option<i64>,
 }
 
 #[derive(Debug, Clone)]

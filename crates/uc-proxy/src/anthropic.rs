@@ -128,6 +128,7 @@ pub async fn proxy_messages(
                 role: Some(uc_core::models::Role::User),
                 source_integration: Some("proxy".into()),
                 source_model: Some(model),
+                timestamp: None,
             };
             if let Err(e) = engine.store(&msg, params).await {
                 error!(error = %e, "store failed");
@@ -288,6 +289,7 @@ async fn forward_raw(
                     role: Some(uc_core::models::Role::Assistant),
                     source_integration: Some("proxy".into()),
                     source_model: Some(model),
+                    timestamp: None,
                 };
                 if let Err(e) = engine.store(&assistant_text, params).await {
                     error!(error = %e, "store assistant failed");

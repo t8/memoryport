@@ -262,6 +262,7 @@ pub async fn proxy_completions(
                 role: Some(uc_core::models::Role::User),
                 source_integration: Some("proxy".into()),
                 source_model: Some(model),
+                timestamp: None,
             };
             let _ = engine.store(&msg, params).await;
             let _ = engine.flush().await;
@@ -368,6 +369,7 @@ async fn forward_openai_raw(
                         role: Some(uc_core::models::Role::Assistant),
                         source_integration: Some("proxy".into()),
                         source_model: Some(model),
+                        timestamp: None,
                     };
                     let _ = engine.store(&assistant_text, params).await;
                     let _ = engine.flush().await;
@@ -582,6 +584,7 @@ pub async fn forward_ollama_any(
                     role: Some(uc_core::models::Role::User),
                     source_integration: Some("proxy-ollama".into()),
                     source_model: Some(m),
+                    timestamp: None,
                 };
                 let _ = engine.store(&msg, params).await;
                 let _ = engine.flush().await;
@@ -601,6 +604,7 @@ pub async fn forward_ollama_any(
                     role: Some(uc_core::models::Role::Assistant),
                     source_integration: Some("proxy-ollama".into()),
                     source_model: Some(m),
+                    timestamp: None,
                 };
                 let _ = engine.store(&assistant_clean, params).await;
                 let _ = engine.flush().await;

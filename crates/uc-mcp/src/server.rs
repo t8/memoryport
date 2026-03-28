@@ -107,6 +107,7 @@ impl UcMcpServer {
             role,
             source_integration: Some("mcp".into()),
             source_model: None,
+            timestamp: None,
         };
 
         match self.engine.store(&params.content, store_params).await {
@@ -140,6 +141,7 @@ impl UcMcpServer {
             role,
             source_integration: Some("mcp".into()),
             source_model: None,
+            timestamp: None,
         };
 
         match self.engine.store(&params.text, store_params).await {
@@ -165,6 +167,7 @@ impl UcMcpServer {
                 role: Some(uc_core::models::Role::User),
                 source_integration: Some("mcp".into()),
                 source_model: None,
+                timestamp: None,
             };
             let _ = self.engine.store(msg, store_params).await;
             let _ = self.engine.flush().await;

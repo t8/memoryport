@@ -410,7 +410,7 @@ impl Engine {
         // Set the batcher's user_id for this store operation
         self.batcher.set_user_id(&params.user_id).await;
 
-        let timestamp = chrono::Utc::now().timestamp_millis();
+        let timestamp = params.timestamp.unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
         let mut chunks = chunker::chunk_text(
             text,
             &params.session_id,

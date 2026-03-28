@@ -10,6 +10,8 @@ pub struct StoreRequest {
     #[serde(default = "default_chunk_type")]
     pub chunk_type: String,
     pub role: Option<String>,
+    /// Optional timestamp override (ms since epoch). Defaults to now.
+    pub timestamp: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

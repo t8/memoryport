@@ -1008,6 +1008,7 @@ async fn store_conversation(
                 role: Some(uc_core::models::Role::User),
                 source_integration: Some(si),
                 source_model: Some(m),
+                timestamp: None,
             };
             let _ = engine.store(&user_msg, params).await;
             let _ = engine.flush().await;
@@ -1028,6 +1029,7 @@ async fn store_conversation(
                 role: Some(uc_core::models::Role::Assistant),
                 source_integration: Some(si),
                 source_model: Some(model),
+                timestamp: None,
             };
             let _ = engine.store(&assistant_text, params).await;
             let _ = engine.flush().await;

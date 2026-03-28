@@ -39,35 +39,84 @@ import sys
 import time
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 SERVER = "http://127.0.0.1:8090"
 MEMORYPORT_INDEX = os.path.expanduser("~/.memoryport/index")
 
+# Reusable session for connection pooling
+_http_session = requests.Session()
 
-def ingest_haystack(question: dict, server: str) -> int:
-    """Ingest all haystack sessions for a question into Memoryport."""
-    stored = 0
-    for session_id, session_date, session_turns in zip(
-        question["haystack_session_ids"],
-        question["haystack_dates"],
-        question["haystack_sessions"],
-    ):
-        for turn in session_turns:
+
+def _parse_session_date(date_str: str) -> int:
+    """Parse a LongMemEval session date string to epoch milliseconds.
+
+    Handles formats like '2023/04/10 (Mon) 17:50' or '2023/04/10'.
+    """
+    try:
+        # Strip day-of-week in parens: "2023/04/10 (Mon) 17:50" -> "2023/04/10 17:50"
+        clean = date_str
+        if "(" in clean:
+            clean = clean[:clean.index("(")].strip() + " " + clean[clean.index(")") + 1:].strip()
+        clean = clean.strip()
+
+        from datetime import datetime
+        for fmt in ["%Y/%m/%d %H:%M", "%Y/%m/%d", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
             try:
-                resp = requests.post(
-                    f"{server}/v1/store",
-                    json={
-                        "text": turn["content"],
-                        "chunk_type": "conversation",
-                        "session_id": f"{question['question_id']}_{session_id}",
-                        "role": turn["role"],
-                    },
-                    timeout=30,
+                dt = datetime.strptime(clean, fmt)
+                return int(dt.timestamp() * 1000)
+            except ValueError:
+                continue
+        return None
+    except Exception:
+        return None
+
+
+def _store_turn(server: str, text: str, session_id: str, role: str,
+                timestamp: int = None) -> bool:
+    """Store a single turn. Returns True on success."""
+    try:
+        body = {
+            "text": text,
+            "chunk_type": "conversation",
+            "session_id": session_id,
+            "role": role,
+        }
+        if timestamp is not None:
+            body["timestamp"] = timestamp
+        resp = _http_session.post(
+            f"{server}/v1/store",
+            json=body,
+            timeout=30,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def ingest_haystack(question: dict, server: str, max_workers: int = 16) -> int:
+    """Ingest all haystack sessions for a question into Memoryport.
+
+    Uses parallel HTTP requests for speed. Preserves original session
+    dates from the benchmark dataset for temporal retrieval.
+    """
+    futures = []
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for session_id, session_date, session_turns in zip(
+            question["haystack_session_ids"],
+            question["haystack_dates"],
+            question["haystack_sessions"],
+        ):
+            ts = _parse_session_date(session_date)
+            for turn_idx, turn in enumerate(session_turns):
+                sid = f"{question['question_id']}_{session_id}"
+                # Offset each turn by 1ms for ordering within a session
+                turn_ts = (ts + turn_idx) if ts else None
+                futures.append(
+                    pool.submit(_store_turn, server, turn["content"], sid,
+                                turn["role"], turn_ts)
                 )
-                if resp.status_code == 200:
-                    stored += 1
-            except Exception:
-                pass
+        stored = sum(1 for f in as_completed(futures) if f.result())
     return stored
 
 
