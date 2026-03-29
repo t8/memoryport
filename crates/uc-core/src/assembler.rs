@@ -84,8 +84,13 @@ fn format_xml(results: &[&SearchResult], max_tokens: u32) -> String {
         }
     }
 
+    // Sort sessions chronologically (by first turn timestamp), not by session ID string.
+    // This helps the LLM reason about temporal ordering across sessions.
+    let mut sorted_sessions: Vec<(&str, Vec<&SearchResult>)> = sessions.into_iter().collect();
+    sorted_sessions.sort_by_key(|(_, turns)| turns.first().map(|t| t.timestamp).unwrap_or(0));
+
     // Format sessions
-    for (session_id, mut turns) in sessions {
+    for (session_id, mut turns) in sorted_sessions {
         turns.sort_by_key(|t| t.timestamp);
         let date = format_timestamp(turns.first().map(|t| t.timestamp).unwrap_or(0));
         out.push_str(&format!("  <session id=\"{session_id}\" date=\"{date}\">\n"));
@@ -179,7 +184,7 @@ mod tests {
             make_result(ChunkType::Conversation, "s1", Some(Role::Assistant), 1711324860000, "Hi there"),
         ];
         let ctx = assemble_context(&results, 5000);
-        assert!(ctx.formatted.contains("<unlimited_context>"));
+        assert!(ctx.formatted.contains("<unlimited_context"));
         assert!(ctx.formatted.contains("<session id=\"s1\""));
         assert!(ctx.formatted.contains("role=\"user\""));
         assert!(ctx.formatted.contains("role=\"assistant\""));

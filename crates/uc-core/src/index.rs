@@ -213,10 +213,8 @@ impl Index {
         let count = self.insert_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         debug!(count = entries.len(), inserts = count, "inserted chunks into index");
 
-        // Auto-compact every 10 inserts to prevent fragment buildup and index bloat.
-        // More frequent than before (was 100) because benchmark workloads with many
-        // small writes can create thousands of fragments, inflating index to 100GB+.
-        if count % 10 == 0 {
+        // Auto-compact every 50 inserts to balance fragment cleanup with write speed.
+        if count % 50 == 0 {
             let bg_table = self.table.clone();
             tokio::spawn(async move {
                 if let Err(e) = bg_table.optimize(lancedb::table::OptimizeAction::Compact {

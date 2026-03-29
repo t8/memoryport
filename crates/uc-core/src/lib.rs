@@ -580,58 +580,6 @@ impl Engine {
             }
         }
 
-        // ── BM25 entity search ──
-        // When the query contains specific entities (proper nouns, quoted strings),
-        // use tantivy phrase search to find exact entity matches. Only adds results
-        // that vector search missed — fills entity-specific gaps.
-        if let Some(ref ki) = self.keyword_index {
-            if let Ok(entity_results) = ki.search_entities(text, user_id, top_k / 4) {
-                if !entity_results.is_empty() {
-                    tracing::debug!(hits = entity_results.len(), "BM25 entity hits");
-                    for kw in entity_results {
-                        if seen.insert(kw.chunk_id.clone()) {
-                            results.push(SearchResult {
-                                chunk_id: kw.chunk_id,
-                                session_id: kw.session_id,
-                                chunk_type: ChunkType::Conversation,
-                                role: None,
-                                timestamp: 0,
-                                content: kw.content,
-                                score: kw.score * 0.005, // Low score — supplement, don't dominate
-                                arweave_tx_id: String::new(),
-                                source_integration: None,
-                                source_model: None,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Statement-form re-query ──
-        // Convert questions to statement form for a second search. Questions
-        // embed differently from statements: "When did I go to Bali?" vs
-        // "I went to Bali" — the latter matches stored conversation text better.
-        let statement = question_to_statement(text);
-        if !statement.is_empty() && statement != text.to_lowercase() {
-            if let Ok(stmt_vector) = self.embeddings.embed(&statement).await {
-                let stmt_params = models::QueryParams {
-                    user_id: user_id.to_string(),
-                    top_k: top_k / 3,
-                    session_id: None,
-                    chunk_type: None,
-                    time_range: None,
-                };
-                if let Ok(stmt_results) = self.index.search(&stmt_vector, &stmt_params).await {
-                    for r in stmt_results {
-                        if seen.insert(r.chunk_id.clone()) {
-                            results.push(r);
-                        }
-                    }
-                }
-            }
-        }
-
         // Sort by score descending, truncate to top_k
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         results.truncate(top_k);

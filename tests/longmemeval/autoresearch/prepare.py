@@ -753,19 +753,12 @@ def main():
         if not args.skip_ingest:
             clear_index()
             print("\n  [1/3] Ingesting haystacks...")
-            # Parallel ingestion: process 2 questions concurrently
-            # (each question already uses 16 threads internally)
             total = 0
-            batch_size = 2
-            for batch_start in range(0, len(questions), batch_size):
-                batch_end = min(batch_start + batch_size, len(questions))
-                batch_qs = questions[batch_start:batch_end]
-                with ThreadPoolExecutor(max_workers=batch_size) as pool:
-                    futures = {pool.submit(ingest_question, q): q for q in batch_qs}
-                    for f in as_completed(futures):
-                        total += f.result()
-                if batch_end % 10 <= batch_size or batch_end == len(questions):
-                    print(f"    [{batch_end}/{len(questions)}] Ingested {total} turns")
+            for i, q in enumerate(questions):
+                stored = ingest_question(q)
+                total += stored
+                if (i + 1) % 10 == 0:
+                    print(f"    [{i+1}/{len(questions)}] Ingested {total} turns")
             print(f"    Total: {total} turns")
             # Wait for indexing to settle
             time.sleep(2)
