@@ -39,5 +39,5 @@ CONFIG = {
     # No LLM needed — pure pattern matching.
     "prompt_style": "default",
 
-    "description": "Exp 38: round-level storage (user+assistant combined) + date enrichment + date-prefixed retrieve + temporal fallback",
+    "description": "Exp 40: round-only validation (Exp 38 config, clean fresh run)",
 }

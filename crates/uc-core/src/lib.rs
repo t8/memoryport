@@ -500,12 +500,12 @@ impl Engine {
                     // Check for a pending user turn to combine with
                     let mut pending = self.pending_turns.lock().await;
                     if let Some(user_turn) = pending.remove(&params.session_id) {
-                        // Combine into a round: "User: ... | Assistant: ..."
-                        // Truncate assistant response to keep the round under chunk size
+                        // Combine into a round: "User: ... \n Assistant: ..."
+                        // The round keeps Q&A context together in one embedding.
                         let user_part: String = user_turn.content.chars().take(500).collect();
                         let asst_part: String = text.chars().take(1000).collect();
                         store_text = format!("User: {}\nAssistant: {}", user_part, asst_part);
-                        store_role = Some(Role::User); // Tag as user since it drives retrieval
+                        store_role = Some(Role::User);
                     } else {
                         store_text = text.to_string();
                         store_role = Some(Role::Assistant);
