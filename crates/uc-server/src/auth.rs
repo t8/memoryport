@@ -32,7 +32,7 @@ pub async fn auth_middleware(
     // If no auth header and no admin key configured → local dev mode (allow through)
     if api_key.is_none() && state.server_config.admin_api_key.is_none() {
         request.extensions_mut().insert(AuthenticatedUser {
-            user_id: "default".into(),
+            user_id: "local".into(),
             key_id: "local".into(),
         });
         return Ok(next.run(request).await);

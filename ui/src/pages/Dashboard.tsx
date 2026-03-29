@@ -143,13 +143,13 @@ export default function Dashboard() {
       <div className="grid grid-cols-4 gap-6 px-8 mt-6">
         <StatusCard
           label="Context space"
-          value={status ? `${Math.round(status.indexed_chunks * 375 / 1000).toLocaleString()}K` : "—"}
+          value={status ? Math.round(status.indexed_chunks * 375) : "—"}
           suffix="tokens"
           tooltip="The total size of your persistent memory — all tokens stored and available for retrieval. This is separate from your model's context window."
         />
         <StatusCard
           label="Indexed chunks"
-          value={status?.indexed_chunks?.toLocaleString() ?? "—"}
+          value={status?.indexed_chunks ?? "—"}
           tooltip="Individual pieces of text stored in the vector database. Each chunk is ~375 tokens (~1,500 characters)."
         />
         <StatusCard
@@ -228,7 +228,13 @@ export default function Dashboard() {
           <h3 className="text-lg font-semibold text-cream mb-4">
             Recent sessions
           </h3>
-          <SessionList sessions={sessions} onSelect={openSession} />
+          {!status ? (
+            <div className="flex items-center gap-2 text-cream-muted py-8 justify-center">
+              <Loader2 size={16} className="animate-spin" /> Loading sessions...
+            </div>
+          ) : (
+            <SessionList sessions={sessions} onSelect={openSession} />
+          )}
         </div>
       )}
     </div>

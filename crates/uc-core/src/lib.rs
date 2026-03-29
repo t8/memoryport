@@ -64,12 +64,14 @@ pub enum EngineError {
     KeyStore(#[from] keystore::KeyStoreError),
 }
 
-/// The main entry point for the Unlimited Context engine.
+/// The main entry point for the Memoryport engine.
 pub struct Engine {
     config: Config,
+    user_id: String,
     index: Arc<Index>,
     embeddings: Arc<dyn EmbeddingProvider>,
     arweave: Arc<ArweaveClient>,
+    writer: Arc<Writer>,
     master_key: Option<crypto::MasterKey>,
     keystore: Option<Arc<keystore::KeyStore>>,
     retriever: Retriever,
@@ -79,6 +81,11 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Get the user ID (wallet address or "local" for users without a wallet).
+    pub fn user_id(&self) -> &str {
+        &self.user_id
+    }
+
     /// Initialize the engine from a config.
     pub async fn new(config: Config) -> Result<Self, EngineError> {
         // Create embedding provider
@@ -139,7 +146,10 @@ impl Engine {
 
         // Initialize encryption if enabled
         let (master_key, keystore) = if config.encryption.enabled {
-            let passphrase = std::env::var(&config.encryption.passphrase_env)
+            // Read passphrase from config first, fall back to env var
+            let passphrase = config.encryption.passphrase.clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| std::env::var(&config.encryption.passphrase_env).ok())
                 .unwrap_or_default();
             if passphrase.is_empty() {
                 tracing::warn!(
@@ -385,13 +395,21 @@ impl Engine {
             })
         });
 
-        let batcher = Batcher::new(50, Duration::from_secs(60), "default", on_flush);
+        // Derive user_id from wallet address (unique per user) or "local" if no wallet
+        let user_id = arweave.address()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "local".to_string());
+        info!(user_id = %user_id, "engine user_id set");
+
+        let batcher = Batcher::new(50, Duration::from_secs(60), &user_id, on_flush);
 
         Ok(Self {
             config,
+            user_id,
             index,
             embeddings,
             arweave,
+            writer,
             master_key,
             keystore,
             retriever,
@@ -575,6 +593,52 @@ impl Engine {
         )
         .await?;
         Ok(progress)
+    }
+
+    /// Sync all local chunks to Arweave that haven't been uploaded yet.
+    /// Returns the number of chunks synced.
+    pub async fn sync_to_arweave(&self) -> Result<usize, EngineError> {
+        use crate::models::{Batch, Chunk, ChunkMetadata};
+        use uuid::Uuid;
+
+        let all_chunks = self.index.get_all_chunks(&self.user_id).await?;
+        let unsynced: Vec<_> = all_chunks.into_iter()
+            .filter(|c| c.arweave_tx_id.is_empty())
+            .collect();
+
+        if unsynced.is_empty() {
+            return Ok(0);
+        }
+
+        let total = unsynced.len();
+        info!(count = total, "syncing unsynced chunks to Arweave");
+
+        for batch_chunks in unsynced.chunks(50) {
+            let chunks: Vec<Chunk> = batch_chunks.iter().map(|r| {
+                Chunk {
+                    id: Uuid::parse_str(&r.chunk_id).unwrap_or_else(|_| Uuid::new_v4()),
+                    content: r.content.clone(),
+                    chunk_type: r.chunk_type.clone(),
+                    role: r.role.clone(),
+                    session_id: r.session_id.clone(),
+                    timestamp: r.timestamp,
+                    metadata: ChunkMetadata::default(),
+                }
+            }).collect();
+
+            let batch = Batch::new(chunks, &self.user_id);
+
+            match self.writer.write_batch(&batch).await {
+                Ok(_receipt) => {
+                    info!(count = batch.chunks.len(), "synced batch to Arweave");
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to sync batch to Arweave");
+                }
+            }
+        }
+
+        Ok(total)
     }
 
     /// Logical deletion: destroy the batch key for a transaction.

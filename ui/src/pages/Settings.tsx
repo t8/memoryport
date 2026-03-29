@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSettings, updateSettings, rebuildFromArweave, resetAllData, validateApiKey, exportWallet, importWallet, restartAllServices, type SettingsData } from "../lib/api";
+import { getSettings, updateSettings, rebuildFromArweave, resetAllData, validateApiKey, exportWallet, importWallet, restartAllServices, syncToArweave, getOperationProgress, type SettingsData } from "../lib/api";
 import Toggle from "../components/Toggle";
 import Tooltip from "../components/Tooltip";
 import { Check, RotateCw, ChevronDown, HardDriveDownload, Loader2, Trash2 } from "lucide-react";
@@ -15,6 +15,9 @@ export default function Settings() {
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<{ chunks_restored: number } | null>(null);
   const [rebuildError, setRebuildError] = useState<string | null>(null);
+  const [rebuildProgress, setRebuildProgress] = useState<{ transactions_found: number; transactions_processed: number; chunks_indexed: number } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<number | null>(null);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [validatingKey, setValidatingKey] = useState(false);
@@ -36,12 +39,23 @@ export default function Settings() {
     setRebuilding(true);
     setRebuildResult(null);
     setRebuildError(null);
+    setRebuildProgress(null);
+
+    // Poll progress in background
+    const pollInterval = setInterval(async () => {
+      try {
+        const p = await getOperationProgress();
+        if (p) setRebuildProgress(p);
+      } catch { /* ignore */ }
+    }, 2000);
+
     try {
       const result = await rebuildFromArweave();
       setRebuildResult(result);
     } catch (e: any) {
       setRebuildError(e.message);
     } finally {
+      clearInterval(pollInterval);
       setRebuilding(false);
     }
   }
@@ -456,6 +470,40 @@ export default function Settings() {
             <div className="pt-2">
               <div className="flex items-start justify-between">
                 <div>
+                  <p className="text-base font-semibold text-cream">Sync local data to Arweave</p>
+                  <p className="text-sm text-cream-muted mt-1">
+                    Upload any local memories that haven't been synced to permanent storage yet
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    setSyncing(true);
+                    setSyncResult(null);
+                    try {
+                      const count = await syncToArweave();
+                      setSyncResult(count);
+                    } catch (e: any) {
+                      setError(`Sync failed: ${e.message}`);
+                    } finally {
+                      setSyncing(false);
+                    }
+                  }}
+                  disabled={syncing}
+                  className="flex items-center gap-2 h-10 px-5 border border-border bg-bg hover:bg-surface disabled:opacity-50 text-sm font-medium transition-colors text-cream shrink-0 ml-4"
+                >
+                  {syncing ? <Loader2 size={16} className="animate-spin" /> : <RotateCw size={16} />}
+                  {syncing ? "Syncing..." : "Sync now"}
+                </button>
+              </div>
+              {syncResult !== null && (
+                <p className="text-sm text-accent mt-3">
+                  {syncResult === 0 ? "All data is already synced" : `Synced ${syncResult.toLocaleString()} chunks to Arweave`}
+                </p>
+              )}
+            </div>
+            <div className="pt-2">
+              <div className="flex items-start justify-between">
+                <div>
                   <p className="text-base font-semibold text-cream">Rebuild from Arweave</p>
                   <p className="text-sm text-cream-muted mt-1">
                     Restore your memory from permanent storage on a new device
@@ -476,7 +524,9 @@ export default function Settings() {
               </div>
               {rebuilding && (
                 <p className="text-sm text-cream-muted mt-3">
-                  Rebuilding... this may take several minutes
+                  {rebuildProgress
+                    ? `Processing transaction ${rebuildProgress.transactions_processed} of ${rebuildProgress.transactions_found}... ${rebuildProgress.chunks_indexed} chunks indexed`
+                    : "Querying Arweave for transactions..."}
                 </p>
               )}
               {rebuildResult && (
@@ -505,18 +555,38 @@ export default function Settings() {
             <h3 className="text-xl font-semibold text-cream">Encryption</h3>
             <Tooltip content="When enabled, all data uploaded to Arweave is encrypted with AES-256-GCM. Each batch gets a unique key wrapped with your master passphrase. Local data is not encrypted." />
           </div>
-          <div className="flex items-center justify-between">
+          <div>
+            <label className="block text-sm text-cream-muted mb-2">Master passphrase</label>
+            <input
+              type="password"
+              value={settings.encryption.passphrase || ""}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  encryption: { ...settings.encryption, passphrase: e.target.value || undefined },
+                })
+              }
+              placeholder="Enter a passphrase to enable encryption"
+              className="w-full h-12 px-3 bg-surface border border-border text-sm text-cream placeholder:text-cream-dim focus:outline-none focus:border-border-hover"
+            />
+            <p className="text-sm text-cream-dim mt-2">
+              Required to encrypt and decrypt Arweave uploads. Keep this safe — you'll need it to restore data on a new device.
+            </p>
+          </div>
+          <div className="flex items-center justify-between mt-4">
             <div>
               <p className="text-base font-semibold text-cream">Encrypt Arweave uploads</p>
               <p className="text-sm text-cream-muted mt-1">
-                {settings.arweave.storage_limit_bytes != null
-                  ? "AES-256-GCM encryption for permanent storage (set UC_MASTER_PASSPHRASE env var)"
-                  : "Add a valid Pro API key above to enable encryption"}
+                {settings.arweave.storage_limit_bytes == null
+                  ? "Add a valid Pro API key above to enable"
+                  : !settings.encryption.passphrase
+                  ? "Enter a passphrase above to enable"
+                  : "AES-256-GCM encryption for permanent storage"}
               </p>
             </div>
             <Toggle
               enabled={settings.encryption.enabled}
-              disabled={settings.arweave.storage_limit_bytes == null}
+              disabled={settings.arweave.storage_limit_bytes == null || !settings.encryption.passphrase}
               onChange={(v) => {
                 if (!v && settings.encryption.enabled) {
                   setConfirmDisableEncryption(true);

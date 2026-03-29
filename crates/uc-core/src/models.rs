@@ -166,7 +166,7 @@ pub struct QueryParams {
 impl Default for QueryParams {
     fn default() -> Self {
         Self {
-            user_id: "default".into(),
+            user_id: "local".into(),
             top_k: 10,
             session_id: None,
             chunk_type: None,

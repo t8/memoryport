@@ -37,7 +37,12 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let engine = Arc::new(Engine::new(config).await?);
-    let server = UcMcpServer::new(engine, cli.user_id);
+    let user_id = if cli.user_id == "default" {
+        engine.user_id().to_string()
+    } else {
+        cli.user_id
+    };
+    let server = UcMcpServer::new(engine, user_id);
 
     tracing::info!("starting Unlimited Context MCP server");
 

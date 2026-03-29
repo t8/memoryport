@@ -128,6 +128,9 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let engine = Engine::new(config).await?;
+    let resolve_uid = |uid: String| -> String {
+        if uid == "default" { engine.user_id().to_string() } else { uid }
+    };
 
     match cli.command {
         Commands::Init => unreachable!(),
@@ -148,7 +151,7 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(|e: String| anyhow::anyhow!(e))?;
 
             let params = StoreParams {
-                user_id,
+                user_id: resolve_uid(user_id),
                 session_id,
                 chunk_type,
                 role,
@@ -171,7 +174,7 @@ async fn main() -> anyhow::Result<()> {
             max_tokens,
         } => {
             let context = engine
-                .query(&text, &user_id, session_id.as_deref(), max_tokens, None)
+                .query(&text, &resolve_uid(user_id), session_id.as_deref(), max_tokens, None)
                 .await?;
 
             if context.chunks_included == 0 {
@@ -192,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
             top_k,
         } => {
             let results = engine
-                .retrieve(&text, &user_id, session_id.as_deref(), None)
+                .retrieve(&text, &resolve_uid(user_id), session_id.as_deref(), None)
                 .await?;
 
             if results.is_empty() {
@@ -214,8 +217,9 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::RebuildIndex { user_id } => {
-            println!("Rebuilding index for user '{user_id}' from Arweave...");
-            let progress = engine.rebuild_index(&user_id).await?;
+            let uid = resolve_uid(user_id);
+            println!("Rebuilding index for user '{uid}' from Arweave...");
+            let progress = engine.rebuild_index(&uid).await?;
             println!("Rebuild complete:");
             println!("  Transactions found:     {}", progress.transactions_found);
             println!("  Transactions processed: {}", progress.transactions_processed);

@@ -57,10 +57,16 @@ async fn main() -> anyhow::Result<()> {
 
     let engine = Arc::new(Engine::new(config).await?);
 
+    let resolved_user_id = if cli.user_id == "default" {
+        engine.user_id().to_string()
+    } else {
+        cli.user_id
+    };
+
     let state = Arc::new(ProxyState {
         engine,
         http: reqwest::Client::new(),
-        user_id: cli.user_id,
+        user_id: resolved_user_id,
         sessions: routes::SessionManager::new(1800), // 30 min inactivity = new session
         context_budget: 50_000,
         agentic_config,

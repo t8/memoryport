@@ -18,6 +18,8 @@ pub struct AppRuntime(pub tokio::runtime::Runtime);
 pub struct AppConfigPath(pub PathBuf);
 /// Service manager for proxy/server sidecars.
 pub struct AppServices(pub Arc<RwLock<Option<ServiceManager>>>);
+/// Shared progress state for long-running operations (rebuild, sync).
+pub struct AppProgress(pub Arc<RwLock<Option<uc_core::rebuild::RebuildProgress>>>);
 
 /// Helper to get the engine or return an error.
 pub async fn get_engine(state: &AppEngine) -> Result<Arc<Engine>, String> {
@@ -69,6 +71,7 @@ pub fn run() {
         .manage(AppRuntime(rt))
         .manage(AppConfigPath(config_path))
         .manage(AppServices(Arc::new(RwLock::new(None))))
+        .manage(AppProgress(Arc::new(RwLock::new(None))))
         .setup(move |app| {
             let cfg_path = app.state::<AppConfigPath>().0.clone();
             let svc = ServiceManager::new(cfg_path);
@@ -140,6 +143,8 @@ pub fn run() {
             commands::register_proxy,
             commands::unregister_proxy,
             commands::rebuild_from_arweave,
+            commands::get_operation_progress,
+            commands::sync_to_arweave,
             commands::reset_all_data,
             commands::validate_api_key,
             commands::import_wallet,

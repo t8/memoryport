@@ -236,6 +236,9 @@ pub struct EncryptionConfig {
     /// Environment variable name containing the master passphrase.
     #[serde(default = "default_passphrase_env")]
     pub passphrase_env: String,
+    /// Master passphrase stored directly in config (alternative to env var).
+    #[serde(default)]
+    pub passphrase: Option<String>,
 }
 
 fn default_passphrase_env() -> String {
@@ -247,6 +250,7 @@ impl Default for EncryptionConfig {
         Self {
             enabled: false,
             passphrase_env: default_passphrase_env(),
+            passphrase: None,
         }
     }
 }

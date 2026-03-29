@@ -205,6 +205,8 @@ export interface SettingsData {
   };
   encryption: {
     enabled: boolean;
+    has_passphrase: boolean;
+    passphrase?: string;
   };
 }
 
@@ -323,6 +325,16 @@ export async function importWallet(jwkJson: string): Promise<void> {
 export async function exportWallet(): Promise<string> {
   if (IS_TAURI) return tauriInvoke("export_wallet");
   throw new Error("Not supported in web mode");
+}
+
+export async function syncToArweave(): Promise<number> {
+  if (IS_TAURI) return tauriInvoke("sync_to_arweave");
+  return 0;
+}
+
+export async function getOperationProgress(): Promise<{ transactions_found: number; transactions_processed: number; chunks_indexed: number; errors: number } | null> {
+  if (IS_TAURI) return tauriInvoke("get_operation_progress");
+  return null;
 }
 
 export async function validateApiKey(apiKey: string): Promise<ValidateKeyResponse> {
