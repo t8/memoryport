@@ -321,8 +321,63 @@ def _do_retrieve(query: str, top_k: int, reference_time: int = None):
     return r.json().get("results", [])
 
 
-def retrieve(question: dict, top_k: int = 50, expand_queries: bool = False) -> dict:
-    """Retrieve context for a question, optionally with query expansion."""
+def _get_full_session(session_id: str):
+    """Retrieve all chunks for a session via /v1/sessions/{id}."""
+    try:
+        r = _http.get(f"{SERVER_URL}/v1/sessions/{session_id}", timeout=30)
+        if r.status_code == 200:
+            return r.json().get("chunks", [])
+    except Exception:
+        pass
+    return []
+
+
+def _needs_decomposition(query: str) -> bool:
+    """Heuristic: does this query mention multiple entities or need aggregation?"""
+    q = query.lower()
+    # Multi-entity comparisons
+    if " or " in q and ("which" in q or "first" in q or "before" in q or "after" in q):
+        return True
+    # Aggregation / exhaustive
+    if any(w in q for w in ["how many", "how much total", "total money", "total time",
+                             "all the", "list all", "every time"]):
+        return True
+    # Temporal ordering of multiple events
+    if any(w in q for w in ["what order", "in order", "chronological", "sequence"]):
+        return True
+    return False
+
+
+def _decompose_query(query: str):
+    """Decompose a multi-entity question into sub-queries."""
+    try:
+        response = call_llm([{
+            "role": "user",
+            "content": (
+                "This question requires finding information about multiple specific "
+                "topics/events/items in a conversation history. Decompose it into 2-4 "
+                "separate, simpler search queries that each target ONE specific topic.\n\n"
+                "Rules:\n"
+                "- Each sub-query should be a simple search for one entity/event\n"
+                "- Strip temporal language, focus on the core content\n"
+                "- Return ONLY the sub-queries, one per line\n"
+                "- If the question is already simple (about one thing), return just that one topic\n\n"
+                f"Question: {query}"
+            ),
+        }], "gpt-4o-mini", max_tokens=200)
+        return [
+            line.strip().lstrip("0123456789.-) ")
+            for line in response.strip().split("\n")
+            if line.strip() and len(line.strip()) > 5
+        ][:4]
+    except Exception:
+        return []
+
+
+def retrieve(question: dict, top_k: int = 50, expand_queries: bool = False,
+             session_expansion: bool = False, query_decomposition: bool = False,
+             max_expanded_sessions: int = 5) -> dict:
+    """Retrieve context with optional enhancements."""
     qid = question["question_id"]
     query = question["question"]
     qdate = question.get("question_date")
@@ -333,8 +388,24 @@ def retrieve(question: dict, top_k: int = 50, expand_queries: bool = False) -> d
         # Primary retrieval
         results = _do_retrieve(query, top_k, ref_ts)
 
-        # Optional: Python-side query expansion (call LLM to rephrase, then merge)
-        if expand_queries and results is not None:
+        # Optional: query decomposition for multi-entity questions
+        # "adaptive" mode only decomposes when the query looks multi-entity/aggregation
+        if query_decomposition:
+            should_decompose = (query_decomposition == "always" or
+                                (query_decomposition == "adaptive" and _needs_decomposition(query)))
+            if should_decompose:
+                sub_queries = _decompose_query(query)
+                if len(sub_queries) > 1:  # Only if actually decomposed
+                    seen_ids = {r.get("chunk_id") for r in results}
+                    for sq in sub_queries:
+                        sq_results = _do_retrieve(sq, top_k // 3, ref_ts)
+                        for r in sq_results:
+                            if r.get("chunk_id") not in seen_ids:
+                                seen_ids.add(r.get("chunk_id"))
+                                results.append(r)
+
+        # Optional: Python-side query expansion
+        if expand_queries:
             expansions = _expand_query(query)
             seen_ids = {r.get("chunk_id") for r in results}
             for exp_query in expansions:
@@ -343,6 +414,36 @@ def retrieve(question: dict, top_k: int = 50, expand_queries: bool = False) -> d
                     if r.get("chunk_id") not in seen_ids:
                         seen_ids.add(r.get("chunk_id"))
                         results.append(r)
+
+        # Optional: session expansion — for top-scoring sessions,
+        # retrieve ALL turns from those sessions (not just matched chunks)
+        if session_expansion and results:
+            # Find top sessions by score
+            session_scores = {}
+            for r in results:
+                sid = r.get("session_id", "")
+                score = r.get("score", 0)
+                session_scores[sid] = max(session_scores.get(sid, 0), score)
+
+            top_sessions = sorted(session_scores.items(), key=lambda x: -x[1])
+            top_sessions = top_sessions[:max_expanded_sessions]
+
+            # Fetch full sessions and merge
+            seen_ids = {r.get("chunk_id") for r in results}
+            for sid, _score in top_sessions:
+                full_chunks = _get_full_session(sid)
+                for chunk in full_chunks:
+                    cid = chunk.get("chunk_id", "")
+                    if cid and cid not in seen_ids:
+                        seen_ids.add(cid)
+                        results.append({
+                            "chunk_id": cid,
+                            "session_id": sid,
+                            "content": chunk.get("content", ""),
+                            "score": 0.0,  # No vector score for expanded chunks
+                            "timestamp": chunk.get("timestamp", 0),
+                            "role": chunk.get("role"),
+                        })
 
         latency_ms = (time.time() - start) * 1000
     except Exception as e:
@@ -408,7 +509,24 @@ def generate_answer(question: str, context: list, model: str,
     ctx_text = "\n\n---\n\n".join(context[:context_chunks])
     date_line = f"The question was asked on: {question_date}\n\n" if question_date else ""
 
-    if prompt_style == "extract-then-reason":
+    if prompt_style == "knowledge-aware":
+        # Knowledge-update-aware prompt: explicitly tells LLM to prefer latest info
+        prompt = (
+            f"You are answering a question based on your conversation history with the user.\n\n"
+            f"{date_line}"
+            f"Retrieved conversation history:\n{ctx_text}\n\n"
+            f"Question: {question}\n\n"
+            f"IMPORTANT: Information may have been updated over time. When you find "
+            f"multiple values for the same fact (e.g., a count, price, or status), "
+            f"ALWAYS use the most recent one based on conversation dates. Explicitly "
+            f"note if information was updated.\n\n"
+            f"For temporal/time questions, identify specific dates mentioned and "
+            f"compute differences step by step. Show your date arithmetic.\n\n"
+            f"For counting/aggregation questions, enumerate every distinct item or "
+            f"event found in the history before giving a total. Do not guess.\n\n"
+            f"Answer concisely."
+        )
+    elif prompt_style == "extract-then-reason":
         # LongMemEval paper's "con" strategy: extract relevant facts first, then reason
         prompt = (
             f"You are answering a question based on your conversation history with the user.\n\n"
@@ -494,8 +612,13 @@ def run_evaluation(questions: list, experiment_config: dict) -> dict:
     print("\n  [2/3] Retrieving context...")
     retrievals = []
     for i, q in enumerate(questions):
-        expand = experiment_config.get("expand_queries", False)
-        r = retrieve(q, top_k=top_k, expand_queries=expand)
+        r = retrieve(
+            q, top_k=top_k,
+            expand_queries=experiment_config.get("expand_queries", False),
+            session_expansion=experiment_config.get("session_expansion", False),
+            query_decomposition=experiment_config.get("query_decomposition", False),
+            max_expanded_sessions=experiment_config.get("max_expanded_sessions", 5),
+        )
         retrievals.append(r)
         if (i + 1) % 20 == 0:
             recalls = [x["session_recall"] for x in retrievals if "session_recall" in x]
@@ -630,12 +753,19 @@ def main():
         if not args.skip_ingest:
             clear_index()
             print("\n  [1/3] Ingesting haystacks...")
+            # Parallel ingestion: process 2 questions concurrently
+            # (each question already uses 16 threads internally)
             total = 0
-            for i, q in enumerate(questions):
-                stored = ingest_question(q)
-                total += stored
-                if (i + 1) % 10 == 0:
-                    print(f"    [{i+1}/{len(questions)}] Ingested {total} turns")
+            batch_size = 2
+            for batch_start in range(0, len(questions), batch_size):
+                batch_end = min(batch_start + batch_size, len(questions))
+                batch_qs = questions[batch_start:batch_end]
+                with ThreadPoolExecutor(max_workers=batch_size) as pool:
+                    futures = {pool.submit(ingest_question, q): q for q in batch_qs}
+                    for f in as_completed(futures):
+                        total += f.result()
+                if batch_end % 10 == 0 or batch_end == len(questions):
+                    print(f"    [{batch_end}/{len(questions)}] Ingested {total} turns")
             print(f"    Total: {total} turns")
             # Wait for indexing to settle
             time.sleep(2)

@@ -97,6 +97,59 @@ pub fn chunk_conversation(
     chunks
 }
 
+/// Split a multi-turn conversation into round-level chunks.
+/// Each user+assistant pair becomes a single chunk, preserving the Q&A context.
+/// This improves embedding quality because the assistant's answer is embedded
+/// alongside the question it answers (LongMemEval paper's #1 recommendation).
+pub fn chunk_conversation_rounds(
+    turns: &[(Role, &str)],
+    session_id: &str,
+    config: &ChunkerConfig,
+    base_timestamp: i64,
+) -> Vec<Chunk> {
+    let mut chunks = Vec::new();
+    let mut ts = base_timestamp;
+    let mut i = 0;
+
+    while i < turns.len() {
+        let (role, content) = &turns[i];
+
+        // Try to pair user+assistant as a round
+        if *role == Role::User && i + 1 < turns.len() && turns[i + 1].0 == Role::Assistant {
+            let round_text = format!(
+                "User: {}\nAssistant: {}",
+                content, turns[i + 1].1
+            );
+            let round_chunks = chunk_text(
+                &round_text,
+                session_id,
+                ChunkType::Conversation,
+                Some(Role::User), // Tag as user since the question drives retrieval
+                config,
+                ts,
+            );
+            ts += round_chunks.len() as i64;
+            chunks.extend(round_chunks);
+            i += 2; // Skip both turns
+        } else {
+            // Unpaired turn (e.g., system message, or trailing user turn)
+            let turn_chunks = chunk_text(
+                content,
+                session_id,
+                ChunkType::Conversation,
+                Some(*role),
+                config,
+                ts,
+            );
+            ts += turn_chunks.len() as i64;
+            chunks.extend(turn_chunks);
+            i += 1;
+        }
+    }
+
+    chunks
+}
+
 fn make_chunk(
     text: &str,
     session_id: &str,

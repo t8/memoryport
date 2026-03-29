@@ -39,5 +39,5 @@ CONFIG = {
     # No LLM needed — pure pattern matching.
     "prompt_style": "default",
 
-    "description": "BEST: Exp 23 — Rust temporal fallback only, 63% accuracy, 342ms p50",
+    "description": "Exp 30: date-only enrichment (validated winner) + temporal fallback, clean index",
 }
