@@ -31,6 +31,10 @@ pub struct RetrieveRequest {
     #[serde(default = "default_top_k")]
     pub top_k: usize,
     pub reference_time: Option<i64>,
+    /// When true, prepend human-readable dates to content (useful for LLM consumers).
+    /// Default false to keep raw content for dashboard/UI display.
+    #[serde(default)]
+    pub include_dates: bool,
 }
 
 #[derive(Debug, Deserialize)]

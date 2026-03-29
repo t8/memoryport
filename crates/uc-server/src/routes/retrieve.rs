@@ -25,9 +25,9 @@ pub async fn retrieve(
         .into_iter()
         .take(req.top_k)
         .map(|r| {
-            // Prepend date to content so consumers (LLMs) can reason about
-            // temporal ordering and knowledge updates without parsing timestamps.
-            let content = if r.timestamp > 0 {
+            // Optionally prepend date to content for LLM consumers.
+            // Dashboard/UI should pass include_dates=false (the default).
+            let content = if req.include_dates && r.timestamp > 0 {
                 if let Some(dt) = Utc.timestamp_millis_opt(r.timestamp).single() {
                     format!("[{}] {}", dt.format("%B %d, %Y"), r.content)
                 } else {

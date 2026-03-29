@@ -127,6 +127,20 @@ impl Retriever {
         debug!(count = primary_results.len(), "primary vector search results");
         candidates.extend(primary_results);
 
+        // Temporal fallback: if temporal filter yielded few results, retry without it.
+        if signals.temporal_range.is_some() && candidates.len() < self.config.similarity_top_k / 2 {
+            let fallback_params = QueryParams {
+                user_id: user_id.to_string(),
+                top_k: self.config.similarity_top_k,
+                session_id: signals.explicit_session.clone(),
+                chunk_type: None,
+                time_range: None,
+            };
+            let fallback = self.index.search(&primary_vector, &fallback_params).await?;
+            debug!(count = fallback.len(), "temporal fallback results");
+            candidates.extend(fallback);
+        }
+
         // Expanded query searches
         for expanded in &enhanced.expanded_queries {
             let exp_vector = self.embeddings.embed(expanded).await?;
@@ -272,8 +286,22 @@ impl Retriever {
         );
 
         let (chunk_results, fact_results) = tokio::join!(chunk_future, fact_future);
-        let chunk_results = chunk_results?;
+        let mut chunk_results = chunk_results?;
         let fact_results = fact_results?;
+
+        // Temporal fallback for hybrid retrieval
+        if signals.temporal_range.is_some() && chunk_results.len() < self.config.similarity_top_k / 2 {
+            let fallback_params = QueryParams {
+                user_id: user_id.to_string(),
+                top_k: self.config.similarity_top_k,
+                session_id: signals.explicit_session.clone(),
+                chunk_type: None,
+                time_range: None,
+            };
+            let fallback = self.index.search(&primary_vector, &fallback_params).await?;
+            debug!(count = fallback.len(), "hybrid temporal fallback results");
+            chunk_results.extend(fallback);
+        }
 
         debug!(
             chunks = chunk_results.len(),
