@@ -39,5 +39,5 @@ CONFIG = {
     # No LLM needed — pure pattern matching.
     "prompt_style": "default",
 
-    "description": "Exp 30: date-only enrichment (validated winner) + temporal fallback, clean index",
+    "description": "Exp 33: clean baseline (date enrichment + temporal fallback + compaction@10, no LLM extraction)",
 }

@@ -580,6 +580,58 @@ impl Engine {
             }
         }
 
+        // ── BM25 entity search ──
+        // When the query contains specific entities (proper nouns, quoted strings),
+        // use tantivy phrase search to find exact entity matches. Only adds results
+        // that vector search missed — fills entity-specific gaps.
+        if let Some(ref ki) = self.keyword_index {
+            if let Ok(entity_results) = ki.search_entities(text, user_id, top_k / 4) {
+                if !entity_results.is_empty() {
+                    tracing::debug!(hits = entity_results.len(), "BM25 entity hits");
+                    for kw in entity_results {
+                        if seen.insert(kw.chunk_id.clone()) {
+                            results.push(SearchResult {
+                                chunk_id: kw.chunk_id,
+                                session_id: kw.session_id,
+                                chunk_type: ChunkType::Conversation,
+                                role: None,
+                                timestamp: 0,
+                                content: kw.content,
+                                score: kw.score * 0.005, // Low score — supplement, don't dominate
+                                arweave_tx_id: String::new(),
+                                source_integration: None,
+                                source_model: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Statement-form re-query ──
+        // Convert questions to statement form for a second search. Questions
+        // embed differently from statements: "When did I go to Bali?" vs
+        // "I went to Bali" — the latter matches stored conversation text better.
+        let statement = question_to_statement(text);
+        if !statement.is_empty() && statement != text.to_lowercase() {
+            if let Ok(stmt_vector) = self.embeddings.embed(&statement).await {
+                let stmt_params = models::QueryParams {
+                    user_id: user_id.to_string(),
+                    top_k: top_k / 3,
+                    session_id: None,
+                    chunk_type: None,
+                    time_range: None,
+                };
+                if let Ok(stmt_results) = self.index.search(&stmt_vector, &stmt_params).await {
+                    for r in stmt_results {
+                        if seen.insert(r.chunk_id.clone()) {
+                            results.push(r);
+                        }
+                    }
+                }
+            }
+        }
+
         // Sort by score descending, truncate to top_k
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         results.truncate(top_k);
@@ -723,5 +775,55 @@ fn create_embedding_provider(config: &config::EmbeddingsConfig) -> Arc<dyn Embed
         }
     }
 }
+
+/// Convert a question to statement form for improved embedding similarity.
+/// "What degree did I graduate with?" → "I graduated with a degree"
+/// "When did I go to Bali?" → "I went to Bali"
+/// "How many playlists do I have?" → "I have playlists"
+fn question_to_statement(query: &str) -> String {
+    let lower = query.to_lowercase();
+    let trimmed = lower.trim().trim_end_matches('?').trim();
+
+    // Strip question openers and convert to statement form
+    let patterns: &[(&str, &str)] = &[
+        ("what is the name of ", "the name of "),
+        ("what is my ", "my "),
+        ("what is the ", "the "),
+        ("what was my ", "my "),
+        ("what was the ", "the "),
+        ("what degree did i ", "I "),
+        ("what did i ", "I "),
+        ("what did we ", "we "),
+        ("when did i ", "I "),
+        ("when was the ", "the "),
+        ("where did i ", "I "),
+        ("where do i ", "I "),
+        ("who did i ", "I "),
+        ("how many ", ""),
+        ("how much ", ""),
+        ("how long ", ""),
+        ("how often ", ""),
+        ("which ", ""),
+        ("do i have ", "I have "),
+        ("did i ", "I "),
+        ("have i ", "I have "),
+        ("am i ", "I am "),
+        ("was i ", "I was "),
+    ];
+
+    for (prefix, replacement) in patterns {
+        if trimmed.starts_with(prefix) {
+            let rest = &trimmed[prefix.len()..];
+            let result = format!("{}{}", replacement, rest);
+            if result.len() > 5 {
+                return result;
+            }
+        }
+    }
+
+    // If no pattern matched, return empty (skip the re-query)
+    String::new()
+}
+
 
 

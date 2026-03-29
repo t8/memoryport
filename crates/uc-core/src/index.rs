@@ -213,13 +213,17 @@ impl Index {
         let count = self.insert_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         debug!(count = entries.len(), inserts = count, "inserted chunks into index");
 
-        // Auto-compact every 100 inserts to prevent fragment buildup
-        if count % 100 == 0 {
+        // Auto-compact every 10 inserts to prevent fragment buildup and index bloat.
+        // More frequent than before (was 100) because benchmark workloads with many
+        // small writes can create thousands of fragments, inflating index to 100GB+.
+        if count % 10 == 0 {
             let bg_table = self.table.clone();
             tokio::spawn(async move {
-                match bg_table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await {
-                    Ok(_) => tracing::debug!("periodic compaction complete"),
-                    Err(e) => tracing::warn!(error = %e, "periodic compaction failed"),
+                if let Err(e) = bg_table.optimize(lancedb::table::OptimizeAction::Compact {
+                    options: Default::default(),
+                    remap_options: None,
+                }).await {
+                    tracing::warn!(error = %e, "periodic compaction failed");
                 }
             });
         }

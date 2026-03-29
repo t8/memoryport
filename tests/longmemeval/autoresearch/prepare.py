@@ -764,7 +764,7 @@ def main():
                     futures = {pool.submit(ingest_question, q): q for q in batch_qs}
                     for f in as_completed(futures):
                         total += f.result()
-                if batch_end % 10 == 0 or batch_end == len(questions):
+                if batch_end % 10 <= batch_size or batch_end == len(questions):
                     print(f"    [{batch_end}/{len(questions)}] Ingested {total} turns")
             print(f"    Total: {total} turns")
             # Wait for indexing to settle

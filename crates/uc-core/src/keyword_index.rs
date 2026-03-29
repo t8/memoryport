@@ -171,6 +171,83 @@ impl KeywordIndex {
         Ok(results)
     }
 
+    /// Search for specific entities (proper nouns, quoted strings) extracted from the query.
+    /// More targeted than full-text search — finds "Alice" or "Bali" directly.
+    pub fn search_entities(
+        &self,
+        query_text: &str,
+        user_id: &str,
+        top_k: usize,
+    ) -> Result<Vec<KeywordSearchResult>, KeywordIndexError> {
+        // Extract potential entities: quoted strings and capitalized multi-word sequences
+        let mut entities = Vec::new();
+
+        // Quoted strings: 'X' or "X"
+        let mut in_quote = false;
+        let mut current = String::new();
+        for c in query_text.chars() {
+            if c == '\'' || c == '"' {
+                if in_quote && current.len() > 2 {
+                    entities.push(current.clone());
+                }
+                current.clear();
+                in_quote = !in_quote;
+            } else if in_quote {
+                current.push(c);
+            }
+        }
+
+        // Capitalized words (potential proper nouns), skip sentence starters
+        let words: Vec<&str> = query_text.split_whitespace().collect();
+        for (i, word) in words.iter().enumerate() {
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if clean.len() > 2 && clean.chars().next().map_or(false, |c| c.is_uppercase()) && i > 0 {
+                entities.push(clean.to_string());
+            }
+        }
+
+        if entities.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Search for each entity and merge results
+        let mut all_results: std::collections::HashMap<String, KeywordSearchResult> = std::collections::HashMap::new();
+        let searcher = self.reader.searcher();
+        let query_parser = QueryParser::for_index(&self.index, vec![self.f_content]);
+
+        for entity in &entities {
+            // Use quotes for phrase matching
+            let phrase_query = format!("\"{}\"", entity);
+            if let Ok(query) = query_parser.parse_query(&phrase_query) {
+                if let Ok(top_docs) = searcher.search(&query, &TopDocs::with_limit(top_k)) {
+                    for (score, doc_address) in top_docs {
+                        if let Ok(doc) = searcher.doc::<TantivyDocument>(doc_address) {
+                            let uid = doc.get_first(self.f_user_id).and_then(|v| v.as_str()).unwrap_or("");
+                            if uid != user_id { continue; }
+
+                            let chunk_id = doc.get_first(self.f_chunk_id).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let entry = all_results.entry(chunk_id.clone()).or_insert(KeywordSearchResult {
+                                chunk_id,
+                                session_id: doc.get_first(self.f_session_id).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                user_id: user_id.to_string(),
+                                content: doc.get_first(self.f_content_stored).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                score: 0.0,
+                            });
+                            entry.score += score; // Accumulate scores across entity matches
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut results: Vec<KeywordSearchResult> = all_results.into_values().collect();
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(top_k);
+
+        debug!(entities = ?entities, hits = results.len(), "BM25 entity search");
+        Ok(results)
+    }
+
     /// Delete all documents for a user (for index rebuilds).
     pub async fn delete_user(&self, user_id: &str) -> Result<(), KeywordIndexError> {
         let term = tantivy::Term::from_field_text(self.f_user_id, user_id);
