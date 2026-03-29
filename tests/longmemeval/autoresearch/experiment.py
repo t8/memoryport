@@ -39,5 +39,5 @@ CONFIG = {
     # No LLM needed — pure pattern matching.
     "prompt_style": "default",
 
-    "description": "Exp 35: CLEAN BASELINE — temporal fallback + date enrichment only (no BM25, no re-query)",
+    "description": "Exp 38: round-level storage (user+assistant combined) + date enrichment + date-prefixed retrieve + temporal fallback",
 }

@@ -65,6 +65,13 @@ pub enum EngineError {
     KeyStore(#[from] keystore::KeyStoreError),
 }
 
+/// Buffered user turn waiting for its assistant response to form a round.
+struct PendingTurn {
+    content: String,
+    session_id: String,
+    timestamp: i64,
+}
+
 /// The main entry point for the Unlimited Context engine.
 pub struct Engine {
     config: Config,
@@ -78,6 +85,8 @@ pub struct Engine {
     reranker: Box<dyn Reranker>,
     batcher: Batcher,
     chunker_config: ChunkerConfig,
+    /// Buffer for user turns awaiting their assistant response (per session).
+    pending_turns: tokio::sync::Mutex<std::collections::HashMap<String, PendingTurn>>,
 }
 
 impl Engine {
@@ -449,38 +458,85 @@ impl Engine {
             reranker,
             batcher,
             chunker_config: ChunkerConfig::default(),
+            pending_turns: tokio::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
     /// Store text content. Chunks it and buffers in the batcher.
+    ///
+    /// For conversation turns: user turns are buffered until the next assistant
+    /// turn arrives for the same session. The user+assistant pair is then stored
+    /// as a single "round" chunk, keeping the Q&A context together in the embedding.
+    /// This improves retrieval quality (LongMemEval paper's #1 recommendation).
     pub async fn store(
         &self,
         text: &str,
         params: StoreParams,
     ) -> Result<Vec<Uuid>, EngineError> {
-        // Set the batcher's user_id for this store operation
         self.batcher.set_user_id(&params.user_id).await;
 
         let timestamp = params.timestamp.unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+
+        // Round-level buffering for conversations: buffer user turns,
+        // combine with the next assistant turn.
+        let store_text: String;
+        let store_role: Option<Role>;
+
+        if params.chunk_type == ChunkType::Conversation {
+            match params.role {
+                Some(Role::User) => {
+                    // Buffer user turn, return empty (will be stored with assistant)
+                    let mut pending = self.pending_turns.lock().await;
+                    pending.insert(params.session_id.clone(), PendingTurn {
+                        content: text.to_string(),
+                        session_id: params.session_id.clone(),
+                        timestamp,
+                    });
+                    // Also store the user turn on its own (so it's searchable independently)
+                    store_text = text.to_string();
+                    store_role = Some(Role::User);
+                }
+                Some(Role::Assistant) => {
+                    // Check for a pending user turn to combine with
+                    let mut pending = self.pending_turns.lock().await;
+                    if let Some(user_turn) = pending.remove(&params.session_id) {
+                        // Combine into a round: "User: ... | Assistant: ..."
+                        // Truncate assistant response to keep the round under chunk size
+                        let user_part: String = user_turn.content.chars().take(500).collect();
+                        let asst_part: String = text.chars().take(1000).collect();
+                        store_text = format!("User: {}\nAssistant: {}", user_part, asst_part);
+                        store_role = Some(Role::User); // Tag as user since it drives retrieval
+                    } else {
+                        store_text = text.to_string();
+                        store_role = Some(Role::Assistant);
+                    }
+                }
+                _ => {
+                    store_text = text.to_string();
+                    store_role = params.role;
+                }
+            }
+        } else {
+            store_text = text.to_string();
+            store_role = params.role;
+        }
+
         let mut chunks = chunker::chunk_text(
-            text,
+            &store_text,
             &params.session_id,
             params.chunk_type,
-            params.role,
+            store_role,
             &self.chunker_config,
             timestamp,
         );
 
-        // Tag source integration + model on each chunk
         for chunk in &mut chunks {
             chunk.metadata.source_integration = params.source_integration.clone();
             chunk.metadata.source_model = params.source_model.clone();
         }
 
         let ids: Vec<Uuid> = chunks.iter().map(|c| c.id).collect();
-
         self.batcher.add_many(chunks).await?;
-
         Ok(ids)
     }
 
@@ -724,54 +780,6 @@ fn create_embedding_provider(config: &config::EmbeddingsConfig) -> Arc<dyn Embed
     }
 }
 
-/// Convert a question to statement form for improved embedding similarity.
-/// "What degree did I graduate with?" → "I graduated with a degree"
-/// "When did I go to Bali?" → "I went to Bali"
-/// "How many playlists do I have?" → "I have playlists"
-fn question_to_statement(query: &str) -> String {
-    let lower = query.to_lowercase();
-    let trimmed = lower.trim().trim_end_matches('?').trim();
-
-    // Strip question openers and convert to statement form
-    let patterns: &[(&str, &str)] = &[
-        ("what is the name of ", "the name of "),
-        ("what is my ", "my "),
-        ("what is the ", "the "),
-        ("what was my ", "my "),
-        ("what was the ", "the "),
-        ("what degree did i ", "I "),
-        ("what did i ", "I "),
-        ("what did we ", "we "),
-        ("when did i ", "I "),
-        ("when was the ", "the "),
-        ("where did i ", "I "),
-        ("where do i ", "I "),
-        ("who did i ", "I "),
-        ("how many ", ""),
-        ("how much ", ""),
-        ("how long ", ""),
-        ("how often ", ""),
-        ("which ", ""),
-        ("do i have ", "I have "),
-        ("did i ", "I "),
-        ("have i ", "I have "),
-        ("am i ", "I am "),
-        ("was i ", "I was "),
-    ];
-
-    for (prefix, replacement) in patterns {
-        if trimmed.starts_with(prefix) {
-            let rest = &trimmed[prefix.len()..];
-            let result = format!("{}{}", replacement, rest);
-            if result.len() > 5 {
-                return result;
-            }
-        }
-    }
-
-    // If no pattern matched, return empty (skip the re-query)
-    String::new()
-}
 
 
 
