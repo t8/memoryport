@@ -26,7 +26,7 @@ pub enum RebuildError {
 }
 
 /// Progress tracker for index rebuilds.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RebuildProgress {
     pub transactions_found: usize,
     pub transactions_processed: usize,
@@ -51,14 +51,21 @@ pub async fn rebuild_index(
     };
 
     let tag_filters = vec![
-        TagFilter::single("App-Name", "UnlimitedContext"),
+        TagFilter::single("App-Name", crate::tagger::APP_NAME),
         TagFilter::single("UC-User-Id", user_id),
     ];
 
     info!(user_id, "querying Arweave for transactions...");
-    let edges = arweave.query_all_transactions(&tag_filters).await?;
+    let mut edges = arweave.query_all_transactions(&tag_filters).await?;
     progress.transactions_found = edges.len();
     info!(count = edges.len(), "found transactions on Arweave");
+
+    // Sort by timestamp for chronological reconstruction
+    edges.sort_by(|a, b| {
+        let ts_a = a.node.tags.iter().find(|t| t.name == "UC-Timestamp-Start").map(|t| &t.value);
+        let ts_b = b.node.tags.iter().find(|t| t.name == "UC-Timestamp-Start").map(|t| &t.value);
+        ts_a.cmp(&ts_b)
+    });
 
     for edge in &edges {
         let tx_id = &edge.node.id;

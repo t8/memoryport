@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::services::ServiceHealthResponse;
-use crate::{get_engine, AppConfigPath, AppEngine, AppRuntime, AppServices};
+use crate::{get_engine, AppConfigPath, AppEngine, AppProgress, AppRuntime, AppServices};
 
 // ── Response types ──
 
@@ -165,7 +165,7 @@ pub async fn store_text(
     let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let params = uc_core::models::StoreParams {
-            user_id: "default".into(),
+            user_id: engine.user_id().to_string(),
             session_id: session_id.unwrap_or_else(|| "default".into()),
             chunk_type: uc_core::models::ChunkType::Conversation,
             role: Some(uc_core::models::Role::User),
@@ -512,6 +512,7 @@ pub struct ArweaveSettings {
 #[derive(Serialize, Deserialize)]
 pub struct EncryptionSettings {
     enabled: bool,
+    has_passphrase: bool,
 }
 
 #[tauri::command]
@@ -597,6 +598,8 @@ pub async fn get_settings(
         },
         encryption: EncryptionSettings {
             enabled: config.encryption.enabled,
+            has_passphrase: config.encryption.passphrase.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+                || std::env::var(&config.encryption.passphrase_env).map(|s| !s.is_empty()).unwrap_or(false),
         },
     })
 }
@@ -696,6 +699,11 @@ pub async fn update_settings(
         if let Some(section) = section.as_table_mut() {
             if let Some(v) = enc.get("enabled").and_then(|v| v.as_bool()) {
                 section.insert("enabled".into(), toml::Value::Boolean(v));
+            }
+            if let Some(v) = enc.get("passphrase").and_then(|v| v.as_str()) {
+                if v != "••••••••" && !v.is_empty() {
+                    section.insert("passphrase".into(), toml::Value::String(v.into()));
+                }
             }
         }
     }
@@ -1201,6 +1209,21 @@ pub async fn reset_all_data(
     Ok(())
 }
 
+// ── Sync ──
+
+#[tauri::command]
+pub async fn sync_to_arweave(
+    engine: State<'_, AppEngine>,
+    rt: State<'_, AppRuntime>,
+) -> Result<usize, String> {
+    let engine = get_engine(&engine).await?;
+    rt.0.spawn(async move {
+        engine.sync_to_arweave().await.map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ── Data recovery ──
 
 #[derive(Serialize)]
@@ -1209,16 +1232,31 @@ pub struct RebuildResult {
 }
 
 #[tauri::command]
+pub async fn get_operation_progress(
+    progress: State<'_, AppProgress>,
+) -> Result<Option<uc_core::rebuild::RebuildProgress>, String> {
+    Ok(progress.0.read().await.clone())
+}
+
+#[tauri::command]
 pub async fn rebuild_from_arweave(
     engine: State<'_, AppEngine>,
+    progress_state: State<'_, AppProgress>,
     rt: State<'_, AppRuntime>,
 ) -> Result<RebuildResult, String> {
+    // Clear progress
+    { *progress_state.0.write().await = None; }
+
     let engine = get_engine(&engine).await?;
+    let progress_arc = progress_state.0.clone();
     rt.0.spawn(async move {
         let progress = engine
-            .rebuild_index("default")
+            .rebuild_index(engine.user_id())
             .await
             .map_err(|e| e.to_string())?;
+
+        // Store final progress
+        { *progress_arc.write().await = Some(progress.clone()); }
         Ok(RebuildResult {
             chunks_restored: progress.chunks_indexed,
         })

@@ -2,8 +2,8 @@ use crate::models::Batch;
 use uc_arweave::Tag;
 use thiserror::Error;
 
-pub const APP_NAME: &str = "UnlimitedContext";
-pub const APP_VERSION: &str = "0.1.0";
+pub const APP_NAME: &str = "Memoryport";
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SCHEMA_VERSION: &str = "1";
 const MAX_TAG_BYTES: usize = 2048;
 

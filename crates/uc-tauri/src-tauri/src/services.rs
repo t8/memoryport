@@ -119,6 +119,17 @@ impl ServiceManager {
         None
     }
 
+    /// Check if proxy is configured (ANTHROPIC_BASE_URL points to our proxy)
+    fn is_proxy_configured() -> bool {
+        dirs::home_dir()
+            .map(|h| h.join(".claude.json"))
+            .filter(|p| p.exists())
+            .and_then(|p| std::fs::read_to_string(&p).ok())
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|d| d.get("env")?.get("ANTHROPIC_BASE_URL")?.as_str().map(|s| s.contains("9191")))
+            .unwrap_or(false)
+    }
+
     pub async fn start_all(&self) {
         let config = self.config_path.to_string_lossy().to_string();
 
@@ -151,11 +162,11 @@ impl ServiceManager {
             }
         }
 
-        // Start proxy
+        // Start proxy only if configured in .claude.json
         {
             let mut svc = self.proxy.lock().await;
             svc.user_stopped = false;
-            if svc.process.is_none() {
+            if svc.process.is_none() && Self::is_proxy_configured() {
                 if let Some(bin) = self.find_binary("uc-proxy") {
                     tracing::info!("starting uc-proxy from {}", bin.display());
                     match Command::new(&bin)
