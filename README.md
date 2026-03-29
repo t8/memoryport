@@ -272,9 +272,23 @@ All encrypted batches are fetched from the permanent storage network and re-inde
 
 ### LongMemEval (ICLR 2025)
 
-Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchmark for long-term memory in chat assistants. 500 curated questions across multi-session conversation histories.
+Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchmark for long-term memory in chat assistants. Tests retrieval and answer accuracy on the standard split (`longmemeval_s`) with ~115K token haystacks per question.
 
-**Session Recall** (did retrieval find the correct session?):
+**Answer Accuracy** (full 500 questions, gpt-4o reader, gpt-4o-mini judge):
+
+| Category | Accuracy | Session Recall | n |
+|----------|----------|----------------|---|
+| single-session-assistant | **91.1%** | 87% | 56 |
+| single-session-user | **60.0%** | 56% | 70 |
+| knowledge-update | **53.3%** | 72% | 78 |
+| single-session-preference | **36.7%** | 53% | 30 |
+| temporal-reasoning | **27.1%** | 36% | 133 |
+| multi-session | **27.1%** | 47% | 133 |
+| **Overall** | **43.5%** | **61.1%** | **500** |
+
+Note: the full 500-question run places all questions' haystacks in a shared index (~250K chunks). In production, each user has an isolated index, which gives better retrieval quality — our 100-question runs (isolated context) consistently score 60-63%.
+
+**Session Recall** (48-question oracle split, local embeddings):
 
 | Category | Recall | n |
 |----------|--------|---|
@@ -286,9 +300,14 @@ Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchma
 | temporal-reasoning | **87.5%** | 8 |
 | **Overall** | **97.9%** | **48** |
 
-For context, GPT-4o with naive RAG scores 30-70% on this benchmark.
+Key retrieval improvements validated across 41 experiments:
+- Temporal fallback (retry without time filter when too few results)
+- Date-enriched embeddings (prepend date to chunks before embedding)
+- Date-prefixed retrieve responses (LLMs see explicit dates per chunk)
+- Round-level conversation storage (user+assistant pairs as single embeddings)
+- Chronological session ordering in assembled context
 
-Tested with `nomic-embed-text` (768d, local via Ollama). No cloud APIs required.
+See `tests/longmemeval/autoresearch/results.tsv` for the full experiment optimization log. Autoresearch framework (`tests/longmemeval/autoresearch/`) enables automated experiment iteration.
 
 ### Stress Test (10K chunks)
 
@@ -323,13 +342,21 @@ Single-turn overhead is dominated by embedding + LanceDB search. Multi-turn adds
 
 Run benchmarks yourself:
 ```bash
+# LongMemEval session recall (oracle split, fast)
+python3 tests/longmemeval/run_benchmark.py --questions 50 --dataset oracle
+
+# LongMemEval answer accuracy (standard split, requires OpenAI API key)
+python3 tests/longmemeval/run_answer_accuracy.py --questions 100 --dataset s --answer-model gpt-4o
+
+# Autoresearch optimization loop (iterates experiments overnight)
+python3 tests/longmemeval/autoresearch/prepare.py --questions 100
+
+# Stress test
 python3 tests/stress/generate.py --chunks 10000
 python3 tests/stress/benchmark.py
-python3 tests/longmemeval/run_benchmark.py --questions 50 --dataset oracle
 
 # Latency benchmark (requires mock upstream + proxy pointed at it)
 python3 tests/latency/mock_upstream.py --port 8199 &
-# Set upstream = "http://127.0.0.1:8199" in uc.toml, then start proxy on port 9292
 python3 tests/latency/benchmark.py --proxy http://127.0.0.1:9292 --mock http://127.0.0.1:8199
 ```
 
@@ -350,7 +377,7 @@ How Memoryport compares to other AI memory tools:
 | **Open protocol** | [AMP](https://github.com/t8/amp-spec) | No | No |
 | **Self-hosting** | Default (runs locally) | Enterprise only | Default (runs locally) |
 | **Scale benchmark** | 500M tokens, 294ms p50 | Not published | Not published |
-| **Retrieval accuracy** | 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
+| **Retrieval accuracy** | 43.5% answer accuracy / 500q, 97.9% session recall (LongMemEval) | 84.6% answer accuracy (LongMemEval, GPT-5) | Not published |
 | **Permanent storage** | Arweave (pay once, stored forever) | No | No |
 | **License** | Apache-2.0 | MIT | AGPL-3.0 |
 

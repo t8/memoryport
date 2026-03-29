@@ -103,6 +103,10 @@ pub struct Index {
     #[allow(dead_code)]
     last_checkout: std::sync::atomic::AtomicU64,
     insert_count: std::sync::atomic::AtomicU32,
+    /// Tracks inserts since last successful compaction.
+    inserts_since_compact: std::sync::atomic::AtomicU32,
+    /// Serializes compaction to prevent concurrent compact operations.
+    compact_lock: tokio::sync::Mutex<()>,
 }
 
 impl Index {
@@ -191,6 +195,8 @@ impl Index {
             dimensions,
             last_checkout: std::sync::atomic::AtomicU64::new(0),
             insert_count: std::sync::atomic::AtomicU32::new(0),
+            inserts_since_compact: std::sync::atomic::AtomicU32::new(0),
+            compact_lock: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -213,15 +219,36 @@ impl Index {
         let count = self.insert_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         debug!(count = entries.len(), inserts = count, "inserted chunks into index");
 
-        // Auto-compact every 100 inserts to prevent fragment buildup
-        if count % 100 == 0 {
-            let bg_table = self.table.clone();
-            tokio::spawn(async move {
-                match bg_table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await {
-                    Ok(_) => tracing::debug!("periodic compaction complete"),
-                    Err(e) => tracing::warn!(error = %e, "periodic compaction failed"),
+        // Auto-compact based on fragment buildup, not fixed insert count.
+        // Each insert creates a new fragment. We compact synchronously (blocking)
+        // when fragment count gets too high, preventing runaway disk growth.
+        let since_compact = self.inserts_since_compact.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+
+        // Compact every 100 uncompacted inserts. Synchronous to ensure it
+        // actually completes before more fragments accumulate.
+        if since_compact >= 100 {
+            // Try to acquire the compact lock (non-blocking). If another task
+            // is already compacting, skip — it'll catch up.
+            if let Ok(_guard) = self.compact_lock.try_lock() {
+                self.inserts_since_compact.store(0, std::sync::atomic::Ordering::Relaxed);
+
+                // Step 1: Compact fragments into larger files
+                match self.table.optimize(lancedb::table::OptimizeAction::Compact {
+                    options: Default::default(),
+                    remap_options: None,
+                }).await {
+                    Ok(_) => debug!("auto-compaction complete (after {} inserts)", since_compact),
+                    Err(e) => tracing::warn!(error = %e, "auto-compaction failed"),
                 }
-            });
+
+                // Step 2: Prune old versions to reclaim disk space.
+                // Without pruning, every compaction leaves old fragment files on disk.
+                let _ = self.table.optimize(lancedb::table::OptimizeAction::Prune {
+                    older_than: Some(chrono::TimeDelta::seconds(30)),
+                    delete_unverified: Some(true),
+                    error_if_tagged_old_versions: Some(false),
+                }).await;
+            }
         }
 
         Ok(())
@@ -416,10 +443,37 @@ impl Index {
         Ok(count)
     }
 
-    /// Compact fragmented data files. Merges small fragments into larger ones
-    /// and prunes old versions, dramatically improving query performance.
+    /// Compact fragmented data files. Merges small fragments into larger ones,
+    /// dramatically improving query performance and reclaiming disk space.
     pub async fn optimize(&self) -> Result<(), IndexError> {
-        self.table.optimize(lancedb::table::OptimizeAction::Compact { options: Default::default(), remap_options: None }).await?;
+        let _guard = self.compact_lock.lock().await;
+
+        // Compact + prune chunks table
+        self.table.optimize(lancedb::table::OptimizeAction::Compact {
+            options: Default::default(),
+            remap_options: None,
+        }).await?;
+        let _ = self.table.optimize(lancedb::table::OptimizeAction::Prune {
+            older_than: Some(chrono::TimeDelta::seconds(1)),
+            delete_unverified: Some(true),
+            error_if_tagged_old_versions: Some(false),
+        }).await;
+        self.inserts_since_compact.store(0, std::sync::atomic::Ordering::Relaxed);
+
+        // Compact + prune facts table
+        if let Some(ref ft) = self.facts_table {
+            let _ = ft.optimize(lancedb::table::OptimizeAction::Compact {
+                options: Default::default(),
+                remap_options: None,
+            }).await;
+            let _ = ft.optimize(lancedb::table::OptimizeAction::Prune {
+                older_than: Some(chrono::TimeDelta::seconds(1)),
+                delete_unverified: Some(true),
+                error_if_tagged_old_versions: Some(false),
+            }).await;
+        }
+
+        tracing::info!("manual compaction + prune complete");
         Ok(())
     }
 
