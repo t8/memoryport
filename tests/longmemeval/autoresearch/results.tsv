@@ -37,6 +37,7 @@ db644f3	20260329_013628	0.5500	0.6517	342	542	0.5000	0.4074	1.0000	0.8333	0.7857
 db644f3	20260329_014520	0.5900	0.6517	1328	1627	0.5625	0.2963	1.0000	0.8333	0.8571	0.5385	Exp 37: date-prefixed retrieve content (stale index latency)
 8d7ed8e	20260329_023555	0.6200	0.6558	324	517	0.6250	0.4444	0.8182	0.6667	0.8571	0.5769	Exp 38: round-level storage (temporal 58%, multi 44%, but assistant dropped 82%)
 8d7ed8e	20260329_035844	0.5900	0.6425	417	550	0.5625	0.3704	1.0000	0.8333	0.8571	0.4615	Exp 39: round+raw assistant 3x chunks (300GB bloat, reverted to round-only)
+4073253	20260329_044815	0.5900	0.6558	298	447	0.5625	0.4074	0.7273	0.6667	0.8571	0.5769	Exp 40: round-only validation (298ms p50, temporal 58%, assistant 73%)
 f0cbcee	20260328_151159	0.4500	0.6475	329	563	0.5625	0.2593	0.9091	0.1667	0.7857	0.2692	Exp 26: session-grouped ordering (CATASTROPHIC — top sessions monopolize)
 4de8a32	20260328_124544	0.6300	0.6475	342	525	0.6250	0.4444	1.0000	0.8333	0.8571	0.5000	Exp 23: temporal fallback only clean baseline (NEW BEST 63%, temporal 50%)
 4de8a32	20260328_104624	0.5700	0.6558	4586	7547	0.6250	0.3704	0.9091	0.3333	0.8571	0.5000	Exp 17: query decomposition (temporal 50% RECORD, but hurts simple categories)
