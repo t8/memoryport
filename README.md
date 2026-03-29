@@ -298,7 +298,14 @@ Evaluated on [LongMemEval](https://github.com/xiaowu0162/LongMemEval), a benchma
 | temporal-reasoning | **87.5%** | 8 |
 | **Overall** | **97.9%** | **48** |
 
-Key retrieval improvements: temporal fallback (retry without time filter when too few results), increased candidate pool (top_k=150), and expanded context window (40 chunks to reader). See `tests/longmemeval/autoresearch/results.tsv` for the full 13-experiment optimization log.
+Key retrieval improvements validated across 41 experiments:
+- Temporal fallback (retry without time filter when too few results)
+- Date-enriched embeddings (prepend date to chunks before embedding)
+- Date-prefixed retrieve responses (LLMs see explicit dates per chunk)
+- Round-level conversation storage (user+assistant pairs as single embeddings)
+- Chronological session ordering in assembled context
+
+See `tests/longmemeval/autoresearch/results.tsv` for the full experiment optimization log. Autoresearch framework (`tests/longmemeval/autoresearch/`) enables automated experiment iteration.
 
 ### Stress Test (10K chunks)
 

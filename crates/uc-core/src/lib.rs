@@ -482,44 +482,8 @@ impl Engine {
         let store_text: String;
         let store_role: Option<Role>;
 
-        if params.chunk_type == ChunkType::Conversation {
-            match params.role {
-                Some(Role::User) => {
-                    // Buffer user turn, return empty (will be stored with assistant)
-                    let mut pending = self.pending_turns.lock().await;
-                    pending.insert(params.session_id.clone(), PendingTurn {
-                        content: text.to_string(),
-                        session_id: params.session_id.clone(),
-                        timestamp,
-                    });
-                    // Also store the user turn on its own (so it's searchable independently)
-                    store_text = text.to_string();
-                    store_role = Some(Role::User);
-                }
-                Some(Role::Assistant) => {
-                    // Check for a pending user turn to combine with
-                    let mut pending = self.pending_turns.lock().await;
-                    if let Some(user_turn) = pending.remove(&params.session_id) {
-                        // Combine into a round: "User: ... \n Assistant: ..."
-                        // The round keeps Q&A context together in one embedding.
-                        let user_part: String = user_turn.content.chars().take(500).collect();
-                        let asst_part: String = text.chars().take(1000).collect();
-                        store_text = format!("User: {}\nAssistant: {}", user_part, asst_part);
-                        store_role = Some(Role::User);
-                    } else {
-                        store_text = text.to_string();
-                        store_role = Some(Role::Assistant);
-                    }
-                }
-                _ => {
-                    store_text = text.to_string();
-                    store_role = params.role;
-                }
-            }
-        } else {
-            store_text = text.to_string();
-            store_role = params.role;
-        }
+        store_text = text.to_string();
+        store_role = params.role;
 
         let mut chunks = chunker::chunk_text(
             &store_text,

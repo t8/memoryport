@@ -39,5 +39,5 @@ CONFIG = {
     # No LLM needed — pure pattern matching.
     "prompt_style": "default",
 
-    "description": "Exp 40: round-only validation (Exp 38 config, clean fresh run)",
+    "description": "Exp 41: no rounds + BM25 entity fallback (when vector score < 0.4) + date enrichment + temporal fallback",
 }
