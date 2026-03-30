@@ -627,6 +627,44 @@ impl Engine {
         Ok(results)
     }
 
+    /// Look up a single chunk by its ID.
+    pub async fn get_chunk_by_id(&self, chunk_id: &str) -> Result<Option<SearchResult>, EngineError> {
+        let result = self.index.get_chunk_by_id(chunk_id).await?;
+        Ok(result)
+    }
+
+    /// Resolve memoryport://chunk/ URIs in text to inline content.
+    pub async fn resolve_refs(&self, text: &str) -> String {
+        let prefix = "memoryport://chunk/";
+        if !text.contains(prefix) {
+            return text.to_string();
+        }
+
+        let mut result = text.to_string();
+        let mut start = 0;
+        while let Some(pos) = result[start..].find(prefix) {
+            let abs_pos = start + pos;
+            let id_start = abs_pos + prefix.len();
+            let id_end = result[id_start..].find(|c: char| !c.is_alphanumeric() && c != '-')
+                .map(|i| id_start + i)
+                .unwrap_or(result.len());
+            let chunk_id = result[id_start..id_end].to_string();
+
+            if let Ok(Some(chunk)) = self.index.get_chunk_by_id(&chunk_id).await {
+                let role = chunk.role.map(|r| r.as_str().to_string()).unwrap_or("unknown".into());
+                let replacement = format!(
+                    "[Referenced memory from session {} — {}]: {}",
+                    chunk.session_id, role, chunk.content
+                );
+                result.replace_range(abs_pos..id_end, &replacement);
+                start = abs_pos + replacement.len();
+            } else {
+                start = id_end;
+            }
+        }
+        result
+    }
+
     /// Compute analytics aggregates for a user.
     pub async fn analytics(
         &self,
@@ -650,7 +688,10 @@ impl Engine {
             0.75, // similarity threshold — only connect closely related sessions
         )
         .await
-        .map_err(|_| EngineError::Index(crate::index::IndexError::NoResults))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "graph computation failed");
+            EngineError::Index(crate::index::IndexError::NoResults)
+        })?;
         Ok(data)
     }
 

@@ -386,6 +386,28 @@ impl Index {
         Ok(all)
     }
 
+    /// Look up a single chunk by its ID.
+    pub async fn get_chunk_by_id(&self, chunk_id: &str) -> Result<Option<SearchResult>, IndexError> {
+        let filter = format!("chunk_id = '{}'", sanitize_sql(chunk_id));
+        self.checkout_latest().await?;
+        let results: Vec<RecordBatch> = self.table
+            .query()
+            .only_if(filter)
+            .limit(1)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        for batch in &results {
+            let parsed = parse_search_results(batch)?;
+            if let Some(first) = parsed.into_iter().next() {
+                return Ok(Some(first));
+            }
+        }
+        Ok(None)
+    }
+
     /// List all distinct sessions for a user with summary info.
     pub async fn list_sessions(&self, user_id: &str) -> Result<Vec<SessionSummary>, IndexError> {
         let filter = format!("user_id = '{}'", sanitize_sql(user_id));

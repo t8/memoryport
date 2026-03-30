@@ -132,8 +132,9 @@ pub async fn retrieve(
     let engine = get_engine(&engine).await?;
     let top_k = top_k.unwrap_or(50);
     rt.0.spawn(async move {
+        let resolved = engine.resolve_refs(&query).await;
         let results = engine
-            .retrieve(&query, engine.user_id(), None, None)
+            .retrieve(&resolved, engine.user_id(), None, None)
             .await
             .map_err(|e| e.to_string())?;
         Ok(results

@@ -66,7 +66,7 @@ pub async fn compute_analytics(
         sessions.insert(chunk.session_id.clone());
 
         // Sync status
-        if chunk.arweave_tx_id.starts_with("local_") {
+        if chunk.arweave_tx_id.is_empty() || chunk.arweave_tx_id.starts_with("local_") {
             local += 1;
         } else {
             synced += 1;

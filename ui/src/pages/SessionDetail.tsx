@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getSession, type SessionChunk } from "../lib/api";
-import { ChevronLeft, User, Bot, Search, X } from "lucide-react";
+import { ChevronLeft, User, Bot, Search, X, Link, Check } from "lucide-react";
 
 function HighlightText({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
@@ -155,8 +155,9 @@ export default function SessionDetail() {
             {filteredChunks.map((chunk, i) => (
               <div
                 key={chunk.chunk_id || i}
-                className="border border-border bg-bg p-6"
+                className="border border-border bg-bg p-6 relative group"
               >
+                {chunk.chunk_id && <CopyRefButton chunkId={chunk.chunk_id} />}
                 <div className="flex items-center gap-2 mb-4">
                   {chunk.role === "user" ? (
                     <User size={20} className="text-cream-muted" />
@@ -187,5 +188,26 @@ export default function SessionDetail() {
         )}
       </div>
     </div>
+  );
+}
+
+function CopyRefButton({ chunkId }: { chunkId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      onClick={async () => {
+        await navigator.clipboard.writeText(`memoryport://chunk/${chunkId}`);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 text-cream-dim hover:text-cream text-[11px] font-mono px-2 py-1 rounded bg-surface/80 border border-border/50 hover:border-border transition-colors"
+    >
+      {copied ? (
+        <><Check size={12} className="text-accent" /> Copied</>
+      ) : (
+        <><Link size={12} /> Share with AI</>
+      )}
+    </button>
   );
 }

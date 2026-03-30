@@ -203,7 +203,9 @@ pub async fn proxy_completions(
     // Fallback: single-shot context injection (original behavior)
     debug!(query_len = last_user_msg.len(), upstream = upstream, "processing OpenAI-format request");
 
-    let clean_query = crate::anthropic::sanitize_query_pub(&last_user_msg);
+    // Resolve memoryport://chunk/ references in the user message
+    let resolved_msg = state.engine.resolve_refs(&last_user_msg).await;
+    let clean_query = crate::anthropic::sanitize_query_pub(&resolved_msg);
 
     // Get current session ID so we can exclude it from context injection
     let current_session = state.sessions.get_session("openai").await;
@@ -484,7 +486,8 @@ pub async fn forward_ollama_any(
 
     // Fallback: single-shot context injection (original behavior)
     let modified_body = if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
-        let clean_query = crate::anthropic::sanitize_query_pub(&user_msg);
+        let resolved_msg = state.engine.resolve_refs(&user_msg).await;
+        let clean_query = crate::anthropic::sanitize_query_pub(&resolved_msg);
         let current_session = state.sessions.get_session("ollama").await;
         let injected = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
             Ok(ref results) => {

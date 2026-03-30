@@ -78,14 +78,22 @@ pub async fn compute_session_graph(
     user_id: &str,
     similarity_threshold: f32,
 ) -> Result<GraphData, GraphError> {
-    // Get all sessions
-    let sessions = index.list_sessions(user_id).await?;
+    // Get all sessions, sorted by most recent first, capped for performance
+    let mut sessions = index.list_sessions(user_id).await?;
 
     if sessions.is_empty() {
         return Ok(GraphData {
             nodes: Vec::new(),
             edges: Vec::new(),
         });
+    }
+
+    // Sort by most recent and limit to 100 sessions to keep graph computation fast
+    sessions.sort_by(|a, b| b.last_timestamp.cmp(&a.last_timestamp));
+    let session_count = sessions.len();
+    sessions.truncate(100);
+    if session_count > 100 {
+        tracing::info!(total = session_count, showing = 100, "capped graph to 100 most recent sessions");
     }
 
     // Check cache — fingerprint is session count + total chunks
@@ -102,33 +110,33 @@ pub async fn compute_session_graph(
     // Compute mean embedding per session
     let mut session_embeddings: Vec<(SessionSummary, Vec<f32>)> = Vec::new();
 
-    for session in &sessions {
-        let chunks = index
-            .get_all_for_session(user_id, &session.session_id)
-            .await?;
+    for (i, session) in sessions.iter().enumerate() {
+        if i % 20 == 0 {
+            tracing::debug!(progress = i, total = sessions.len(), "computing graph embeddings");
+        }
+
+        let chunks = match index.get_all_for_session(user_id, &session.session_id).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::debug!(session = %session.session_id, error = %e, "skipping session");
+                continue;
+            }
+        };
 
         if chunks.is_empty() {
             continue;
         }
 
-        // Get text from all chunks, compute mean embedding
-        let texts: Vec<&str> = chunks
-            .iter()
-            .take(20) // limit to avoid huge batch embeds
-            .map(|c| c.content.as_str())
-            .collect();
-
-        // Concatenate texts and embed as a single document (cheaper than batch + average)
-        let combined = texts.join(" ");
-        let truncated = if combined.len() > 2000 {
-            &combined[..2000]
-        } else {
-            &combined
-        };
+        // Concatenate first 20 chunks and embed as a single document
+        let combined: String = chunks.iter().take(20).map(|c| c.content.as_str()).collect::<Vec<_>>().join(" ");
+        let truncated = if combined.len() > 2000 { &combined[..2000] } else { &combined };
 
         match embeddings.embed(truncated).await {
             Ok(emb) => session_embeddings.push((session.clone(), emb)),
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!(session = %session.session_id, error = %e, "embedding failed, skipping");
+                continue;
+            }
         }
     }
 

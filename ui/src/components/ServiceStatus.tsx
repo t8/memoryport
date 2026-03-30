@@ -55,8 +55,8 @@ function ServiceRow({ info }: { info: ServiceInfo }) {
         }`}
       >
         <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[info.status] || "bg-cream-dim"}`} />
-        <span className="text-cream-muted capitalize flex-1 text-left flex items-center gap-2">
-          {info.name}
+        <span className="text-cream-muted flex-1 text-left flex items-center gap-2">
+          {info.name === "mcp" ? "MCP" : info.name.charAt(0).toUpperCase() + info.name.slice(1)}
           {port && (
             <span className="text-cream-dim text-[10px] font-mono">:{port}</span>
           )}

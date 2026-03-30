@@ -17,6 +17,8 @@ import {
   type SimulationLinkDatum,
 } from "d3-force";
 import { scaleLinear } from "d3-scale";
+import { zoom as d3Zoom, zoomIdentity } from "d3-zoom";
+import { select } from "d3-selection";
 import { ArrowLeft, Bot, User } from "lucide-react";
 
 interface SimNode extends SimulationNodeDatum {
@@ -43,6 +45,7 @@ export default function Graph() {
   const [sessionCache, setSessionCache] = useState<Record<string, SessionChunk[]>>({});
   const [simulating, setSimulating] = useState(true);
   const [simProgress, setSimProgress] = useState(0);
+  const [transform, setTransform] = useState("translate(0,0) scale(1)");
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -57,6 +60,22 @@ export default function Graph() {
         setLoading(false);
       });
   }, []);
+
+  // Set up zoom/pan on the SVG
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = select(svgRef.current);
+    const zoomBehavior = d3Zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 5])
+      .on("zoom", (event) => {
+        const { x, y, k } = event.transform;
+        setTransform(`translate(${x},${y}) scale(${k})`);
+      });
+    svg.call(zoomBehavior);
+    // Start slightly zoomed out to fit more content
+    svg.call(zoomBehavior.transform, zoomIdentity.translate(400, 300).scale(0.5));
+    return () => { svg.on(".zoom", null); };
+  }, [graph]);
 
   // Run force simulation when graph data changes, with position caching
   useEffect(() => {
@@ -186,7 +205,19 @@ export default function Graph() {
 
   if (loading) {
     return (
-      <div className="p-8 text-cream-muted">Computing knowledge graph...</div>
+      <div className="p-8 flex items-center gap-3 text-cream-muted">
+        <div className="w-4 h-4 border-2 border-cream-dim border-t-cream rounded-full animate-spin" />
+        Computing knowledge graph — this may take a minute on first load...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <h2 className="font-display uppercase text-cream text-2xl tracking-wide">Knowledge Graph</h2>
+        <p className="text-error text-sm mt-2">{error}</p>
+      </div>
     );
   }
 
@@ -236,9 +267,10 @@ export default function Graph() {
           ref={svgRef}
           width="100%"
           height="100%"
-          viewBox="0 0 800 600"
-          className="w-full h-full"
+          className="w-full h-full cursor-grab active:cursor-grabbing"
+          style={{ touchAction: "none" }}
         >
+          <g transform={transform}>
           {/* Edges */}
           {links.map((link, i) => {
             const source = link.source as SimNode;
@@ -330,6 +362,7 @@ export default function Graph() {
               </g>
             );
           })}
+          </g>
         </svg>
       </div>
 

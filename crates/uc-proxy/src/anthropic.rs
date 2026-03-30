@@ -47,7 +47,9 @@ pub async fn proxy_messages(
     // Fallback: single-shot context injection (original behavior)
     debug!(query_len = last_user_msg.len(), "extracting context for Anthropic message");
 
-    let clean_query = sanitize_query(&last_user_msg);
+    // Resolve memoryport://chunk/ references in the user message
+    let resolved_msg = state.engine.resolve_refs(&last_user_msg).await;
+    let clean_query = sanitize_query(&resolved_msg);
 
     // 2. Search for relevant context, excluding current session
     let current_session = state.sessions.get_session("anthropic").await;

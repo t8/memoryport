@@ -70,6 +70,12 @@ pub struct RetrieveParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetChunkParams {
+    /// The chunk ID to look up. Usually from a memoryport://chunk/ reference.
+    pub chunk_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSessionParams {
     /// Session identifier to retrieve.
     pub session_id: String,
@@ -95,6 +101,7 @@ pub struct AutoStoreParams {
     pub model: Option<String>,
 }
 
+
 // -- Tool implementations --
 
 #[tool_router(router = tool_router)]
@@ -114,7 +121,10 @@ impl UcMcpServer {
             timestamp: None,
         };
 
-        match self.engine.store(&params.content, store_params).await {
+        // Resolve memoryport:// references before storing
+        let content = self.engine.resolve_refs(&params.content).await;
+
+        match self.engine.store(&content, store_params).await {
             Ok(_) => {
                 let _ = self.engine.flush().await;
                 "stored".into()
@@ -162,6 +172,9 @@ impl UcMcpServer {
         let user_id = params.user_id.as_deref().unwrap_or(&self.default_user_id);
         let max_tokens = params.max_tokens.unwrap_or(50_000);
 
+        // Auto-resolve memoryport:// references in the query
+        let query = self.engine.resolve_refs(&params.query).await;
+
         // Side-effect: store current message if provided
         if let Some(ref msg) = params.current_message {
             let store_params = uc_core::models::StoreParams {
@@ -179,7 +192,7 @@ impl UcMcpServer {
 
         match self
             .engine
-            .query(&params.query, user_id, params.session_id.as_deref(), max_tokens, None)
+            .query(&query, user_id, params.session_id.as_deref(), max_tokens, None)
             .await
         {
             Ok(ctx) if ctx.chunks_included == 0 => "No matching context found.".into(),
@@ -213,6 +226,27 @@ impl UcMcpServer {
                     .collect();
                 serde_json::to_string_pretty(&output).unwrap_or_default()
             }
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Look up a specific memory chunk by its ID. Use when the user pastes a memoryport://chunk/ reference. Returns the chunk content, role, session_id, and metadata. Call uc_get_session with the returned session_id if you need the full conversation around this chunk.")]
+    pub async fn uc_get_chunk(&self, Parameters(params): Parameters<GetChunkParams>) -> String {
+        match self.engine.get_chunk_by_id(&params.chunk_id).await {
+            Ok(Some(chunk)) => {
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "chunk_id": chunk.chunk_id,
+                    "session_id": chunk.session_id,
+                    "role": chunk.role.map(|r| r.as_str().to_string()),
+                    "content": chunk.content,
+                    "timestamp": chunk.timestamp,
+                    "chunk_type": chunk.chunk_type.as_str(),
+                    "source_integration": chunk.source_integration,
+                    "source_model": chunk.source_model,
+                    "hint": "Use uc_get_session with the session_id above to see the full conversation around this chunk."
+                })).unwrap_or_default()
+            }
+            Ok(None) => format!("Chunk not found: {}", params.chunk_id),
             Err(e) => format!("Error: {e}"),
         }
     }
