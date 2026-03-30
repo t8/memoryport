@@ -26,6 +26,7 @@ pub struct HotConfig {
 
 struct HotConfigCache {
     agentic: uc_core::config::AgenticProxyConfig,
+    capture_only: bool,
     mtime: Option<std::time::SystemTime>,
 }
 
@@ -34,24 +35,51 @@ impl HotConfig {
         let mtime = std::fs::metadata(&config_path).ok().and_then(|m| m.modified().ok());
         Self {
             config_path,
-            cached: Mutex::new(HotConfigCache { agentic: initial, mtime }),
+            cached: Mutex::new(HotConfigCache { agentic: initial, capture_only: false, mtime }),
         }
     }
 
-    pub async fn agentic(&self) -> uc_core::config::AgenticProxyConfig {
+    async fn reload(&self) -> HotConfigCache {
         let current_mtime = std::fs::metadata(&self.config_path).ok().and_then(|m| m.modified().ok());
         let mut cache = self.cached.lock().await;
 
         if current_mtime != cache.mtime {
-            // File changed — reload
             if let Ok(config) = uc_core::config::Config::from_file(&self.config_path) {
                 debug!("hot-reloaded proxy config from disk");
                 cache.agentic = config.proxy.agentic;
+                cache.capture_only = config.proxy.capture_only;
                 cache.mtime = current_mtime;
             }
         }
 
-        cache.agentic.clone()
+        HotConfigCache {
+            agentic: cache.agentic.clone(),
+            capture_only: cache.capture_only,
+            mtime: cache.mtime,
+        }
+    }
+
+    pub async fn agentic(&self) -> uc_core::config::AgenticProxyConfig {
+        self.reload().await.agentic
+    }
+
+    pub async fn capture_only(&self) -> bool {
+        let cache = self.reload().await;
+        if cache.capture_only {
+            return true;
+        }
+        // Auto-enable capture_only when MCP is also registered (avoid duplicate injection)
+        let mcp_registered = dirs::home_dir()
+            .map(|h| h.join(".claude.json"))
+            .filter(|p| p.exists())
+            .and_then(|p| std::fs::read_to_string(&p).ok())
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|d| d.get("mcpServers")?.as_object()?.contains_key("memoryport").then_some(true))
+            .unwrap_or(false);
+        if mcp_registered {
+            debug!("MCP registered — auto-enabling capture_only to avoid duplicate injection");
+        }
+        mcp_registered
     }
 }
 
@@ -181,9 +209,12 @@ pub async fn proxy_completions(
         return forward_openai_raw(&state, &headers, &body, upstream).await;
     }
 
+    // Capture-only mode: skip injection
+    let capture_only = state.agentic_config.capture_only().await;
+
     // Agentic path: inject tools and let the LLM query memory iteratively
     let agentic = state.agentic_config.agentic().await;
-    if agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
+    if !capture_only && agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
         let model = request.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string();
         let is_no_tool_model = state.no_tool_models.lock().await.contains(&model);
 
@@ -207,39 +238,38 @@ pub async fn proxy_completions(
     let resolved_msg = state.engine.resolve_refs(&last_user_msg).await;
     let clean_query = crate::anthropic::sanitize_query_pub(&resolved_msg);
 
-    // Get current session ID so we can exclude it from context injection
-    let current_session = state.sessions.get_session("openai").await;
-
-    // Search for context (best-effort), excluding current session
-    let context = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
-        Ok(ref results) => {
-            let clean: Vec<_> = results
-                .iter()
-                .filter(|r| !crate::anthropic::is_system_prompt_leak_pub(&r.content))
-                .filter(|r| r.session_id != current_session) // exclude current conversation
-                .cloned()
-                .collect();
-            if clean.is_empty() {
-                None
-            } else {
-                Some(uc_core::assembler::assemble_context(&clean, state.context_budget))
+    // Search and inject context (skip in capture_only mode)
+    if !capture_only {
+        let current_session = state.sessions.get_session("openai").await;
+        let context = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
+            Ok(ref results) => {
+                let clean: Vec<_> = results
+                    .iter()
+                    .filter(|r| !crate::anthropic::is_system_prompt_leak_pub(&r.content))
+                    .filter(|r| r.session_id != current_session)
+                    .cloned()
+                    .collect();
+                if clean.is_empty() {
+                    None
+                } else {
+                    Some(uc_core::assembler::assemble_context(&clean, state.context_budget))
+                }
             }
-        }
-        Err(e) => {
-            warn!(error = %e, "context retrieval failed");
-            None
-        }
-    };
+            Err(e) => {
+                warn!(error = %e, "context retrieval failed");
+                None
+            }
+        };
 
-    // Inject context into last user message
-    if let Some(ref ctx) = context {
-        if ctx.chunks_included > 0 {
-            let plain_context = crate::anthropic::format_plain_context(&ctx.formatted);
-            let suffix = format!(
-                "\n\nFor additional context, here is information from my previous conversations:\n\n{}\n\nPlease use the above context to answer my question.",
-                plain_context
-            );
-            append_to_last_user_message(&mut request, &suffix);
+        if let Some(ref ctx) = context {
+            if ctx.chunks_included > 0 {
+                let plain_context = crate::anthropic::format_plain_context(&ctx.formatted);
+                let suffix = format!(
+                    "\n\nFor additional context, here is information from my previous conversations:\n\n{}\n\nPlease use the above context to answer my question.",
+                    plain_context
+                );
+                append_to_last_user_message(&mut request, &suffix);
+            }
         }
     }
 
@@ -462,9 +492,10 @@ pub async fn forward_ollama_any(
     };
 
     // Inject context into /api/chat requests (skip internal/meta requests)
+    let ollama_capture_only = state.agentic_config.capture_only().await;
     // Agentic path for /api/chat
     let ollama_agentic = state.agentic_config.agentic().await;
-    if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request
+    if !ollama_capture_only && path == "/api/chat" && !user_msg.is_empty() && !is_internal_request
         && ollama_agentic.enabled && !crate::agentic::is_disabled_by_header(&headers)
     {
         let is_no_tool_model = state.no_tool_models.lock().await.contains(&model);
@@ -484,8 +515,8 @@ pub async fn forward_ollama_any(
         }
     }
 
-    // Fallback: single-shot context injection (original behavior)
-    let modified_body = if path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
+    // Fallback: single-shot context injection (skip in capture_only mode)
+    let modified_body = if !ollama_capture_only && path == "/api/chat" && !user_msg.is_empty() && !is_internal_request {
         let resolved_msg = state.engine.resolve_refs(&user_msg).await;
         let clean_query = crate::anthropic::sanitize_query_pub(&resolved_msg);
         let current_session = state.sessions.get_session("ollama").await;

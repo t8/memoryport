@@ -190,6 +190,9 @@ pub struct ProxyConfig {
     pub upstream: Option<String>,
     #[serde(default)]
     pub agentic: AgenticProxyConfig,
+    /// When true, proxy captures conversations but does not inject memory context.
+    #[serde(default)]
+    pub capture_only: bool,
 }
 
 fn default_listen() -> String {
@@ -202,6 +205,7 @@ impl Default for ProxyConfig {
             listen: default_listen(),
             upstream: None,
             agentic: AgenticProxyConfig::default(),
+            capture_only: false,
         }
     }
 }

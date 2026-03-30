@@ -1,4 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
+import { DataProvider } from "../lib/DataContext";
 import {
   LayoutAlt02,
   BarChartSquare01,
@@ -68,7 +69,9 @@ export default function Layout() {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto bg-bg">
-        <Outlet />
+        <DataProvider>
+          <Outlet />
+        </DataProvider>
       </main>
     </div>
   );

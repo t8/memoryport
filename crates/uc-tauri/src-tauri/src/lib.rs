@@ -85,10 +85,13 @@ pub fn run() {
                 *guard = Some(svc);
             });
 
-            // If config exists, start services
+            // If config exists, start services and re-register integrations
             if config_exists {
                 let services_lock2: Arc<RwLock<Option<ServiceManager>>> = app_services.0.clone();
                 tauri::async_runtime::spawn(async move {
+                    // Re-register MCP (removed on last close)
+                    let _ = commands::register_mcp().await;
+
                     let guard = services_lock2.read().await;
                     if let Some(ref svc) = *guard {
                         svc.start_all().await;
@@ -102,14 +105,42 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let app = window.app_handle().clone();
                 let services = app.state::<AppServices>().0.clone();
-                // Stop services and restore proxy on close
+                // Graceful shutdown: stop services, restore all configs
                 tauri::async_runtime::block_on(async {
+                    tracing::info!("app closing — stopping services and restoring configs");
+
+                    // 1. Stop all managed services (kills proxy/server processes)
                     let guard = services.read().await;
                     if let Some(ref svc) = *guard {
                         svc.stop_all().await;
                     }
                     drop(guard);
+
+                    // 2. Restore proxy config (ANTHROPIC_BASE_URL)
                     let _ = commands::unregister_proxy().await;
+
+                    // 3. Remove MCP registration (sidecar binary won't be accessible)
+                    if let Some(home) = dirs::home_dir() {
+                        let mcp_configs = vec![
+                            home.join(".claude.json"),
+                            home.join("Library/Application Support/Claude/claude_desktop_config.json"),
+                            home.join(".cursor/mcp.json"),
+                        ];
+                        for path in &mcp_configs {
+                            if path.exists() {
+                                if let Ok(content) = std::fs::read_to_string(path) {
+                                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                                        if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+                                            servers.remove("memoryport");
+                                        }
+                                        let _ = std::fs::write(path, serde_json::to_string_pretty(&data).unwrap_or_default());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    tracing::info!("graceful shutdown complete");
                 });
             }
         })

@@ -1,13 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import {
-  getStatus,
-  listSessions,
-  type Status,
-  type SessionInfo,
-  type SearchResult,
-} from "../lib/api";
+import { type SearchResult } from "../lib/api";
+import { useData } from "../lib/DataContext";
 import StatusCard from "../components/StatusCard";
 import SessionList from "../components/SessionList";
 import SearchBar from "../components/SearchBar";
@@ -15,110 +10,27 @@ import Highlight from "../components/Highlight";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<Status | null>(null);
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const { status, sessions, error: dataError, refresh } = useData();
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(
     null
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] = useState<string | null>(null);
-  const [showErrorDetails, setShowErrorDetails] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const [isRetrying, setIsRetrying] = useState(false);
-  const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopAutoRetry = useCallback(() => {
-    if (retryTimerRef.current) {
-      clearInterval(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-    setIsRetrying(false);
-  }, []);
-
-  const loadData = useCallback(async () => {
-    try {
-      const [s, sess] = await Promise.all([getStatus(), listSessions()]);
-      setStatus(s);
-      setSessions(sess.sessions);
-      setError(null);
-      setErrorDetails(null);
-      setRetryCount(0);
-      stopAutoRetry();
-    } catch (err) {
-      const rawMsg = err instanceof Error ? err.message : String(err);
-      setError("connecting");
-      setErrorDetails(rawMsg);
-    }
-  }, [stopAutoRetry]);
-
-  useEffect(() => {
-    loadData();
-    // Auto-refresh every 15 seconds to pick up new sessions from the proxy
-    const refreshInterval = setInterval(loadData, 15000);
-    return () => {
-      stopAutoRetry();
-      clearInterval(refreshInterval);
-    };
-  }, [loadData, stopAutoRetry]);
-
-  // Start auto-retry when error is set
-  useEffect(() => {
-    if (error && !retryTimerRef.current) {
-      setIsRetrying(true);
-      retryTimerRef.current = setInterval(() => {
-        setRetryCount((c) => c + 1);
-        loadData();
-      }, 3000);
-    }
-    return () => {
-      if (!error) stopAutoRetry();
-    };
-  }, [error, loadData, stopAutoRetry]);
 
   function openSession(sessionId: string) {
     navigate(`/session/${encodeURIComponent(sessionId)}`);
   }
 
-  if (error) {
+  if (dataError && !status) {
     return (
       <div className="p-8">
         <div className="border border-error/50 bg-error/10 p-6 text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
-            {isRetrying && <Loader2 size={16} className="animate-spin text-cream-muted" />}
+            <Loader2 size={16} className="animate-spin text-cream-muted" />
             <p className="text-cream font-medium">Memoryport server is starting...</p>
           </div>
-          <p className="text-sm text-cream-muted">
-            {retryCount === 0
-              ? "Connecting to the Memoryport server..."
-              : `Retrying... (attempt ${retryCount})`}
-          </p>
-          {retryCount >= 3 && (
-            <p className="text-xs text-cream-dim mt-2">
-              Make sure the server is running. If using Tauri, it should start automatically.
-              For web mode, run <code className="font-mono bg-bg/50 px-1">uc-server</code> first.
-            </p>
-          )}
-          {errorDetails && (
-            <div className="mt-3">
-              <button
-                onClick={() => setShowErrorDetails(!showErrorDetails)}
-                className="text-xs text-cream-dim hover:text-cream-muted transition-colors"
-              >
-                {showErrorDetails ? "Hide" : "Show"} technical details
-              </button>
-              {showErrorDetails && (
-                <pre className="mt-1 text-xs text-cream-dim bg-bg/50 p-2 overflow-x-auto font-mono text-left mx-auto max-w-md">
-                  {errorDetails}
-                </pre>
-              )}
-            </div>
-          )}
+          <p className="text-sm text-cream-muted">Connecting...</p>
           <button
-            onClick={() => {
-              setRetryCount(0);
-              loadData();
-            }}
+            onClick={refresh}
             className="mt-4 px-4 py-1.5 bg-surface border border-border hover:bg-surface-hover text-cream text-sm transition-colors"
           >
             Retry now

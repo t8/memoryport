@@ -497,6 +497,7 @@ pub struct RetrievalSettings {
 #[derive(Serialize, Deserialize)]
 pub struct ProxySettings {
     agentic_enabled: bool,
+    capture_only: bool,
 }
 
 #[derive(Serialize)]
@@ -558,6 +559,7 @@ pub async fn get_settings(
         },
         proxy: Some(ProxySettings {
             agentic_enabled: config.proxy.agentic.enabled,
+            capture_only: config.proxy.capture_only,
         }),
         arweave: {
             // If API key exists, validate it to get storage stats
@@ -646,17 +648,20 @@ pub async fn update_settings(
     }
 
     if let Some(proxy) = settings.get("proxy") {
-        if let Some(enabled) = proxy.get("agentic_enabled").and_then(|v| v.as_bool()) {
-            let section = table
-                .entry("proxy")
-                .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
-            if let Some(section) = section.as_table_mut() {
+        let section = table
+            .entry("proxy")
+            .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+        if let Some(section) = section.as_table_mut() {
+            if let Some(enabled) = proxy.get("agentic_enabled").and_then(|v| v.as_bool()) {
                 let agentic = section
                     .entry("agentic")
                     .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
                 if let Some(agentic) = agentic.as_table_mut() {
                     agentic.insert("enabled".into(), toml::Value::Boolean(enabled));
                 }
+            }
+            if let Some(v) = proxy.get("capture_only").and_then(|v| v.as_bool()) {
+                section.insert("capture_only".into(), toml::Value::Boolean(v));
             }
         }
     }

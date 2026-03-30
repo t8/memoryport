@@ -1,12 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
-  getGraph,
   getSession,
-  type GraphData,
   type GraphNode,
   type GraphEdge,
   type SessionChunk,
 } from "../lib/api";
+import { useData } from "../lib/DataContext";
 import {
   forceSimulation,
   forceLink,
@@ -34,9 +33,9 @@ interface SimLink extends SimulationLinkDatum<SimNode> {
 }
 
 export default function Graph() {
-  const [graph, setGraph] = useState<GraphData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { graph, loading: dataLoading, fetchGraph } = useData();
+  const loading = dataLoading.graph ?? !graph;
+  const [error] = useState<string | null>(null);
   const [nodes, setNodes] = useState<SimNode[]>([]);
   const [links, setLinks] = useState<SimLink[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -48,18 +47,8 @@ export default function Graph() {
   const [transform, setTransform] = useState("translate(0,0) scale(1)");
   const svgRef = useRef<SVGSVGElement>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    getGraph()
-      .then((data) => {
-        setGraph(data);
-        setLoading(false);
-      })
-      .catch((e) => {
-        setError(e.message);
-        setLoading(false);
-      });
-  }, []);
+  useEffect(() => { fetchGraph(); }, [fetchGraph]);
+
 
   // Set up zoom/pan on the SVG
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSettings, updateSettings, rebuildFromArweave, resetAllData, validateApiKey, exportWallet, importWallet, restartAllServices, syncToArweave, getOperationProgress, type SettingsData } from "../lib/api";
+import { getSettings, updateSettings, rebuildFromArweave, resetAllData, validateApiKey, exportWallet, importWallet, restartAllServices, syncToArweave, getOperationProgress, getIntegrations, type SettingsData, type IntegrationsStatus } from "../lib/api";
 import Toggle from "../components/Toggle";
 import Tooltip from "../components/Tooltip";
 import { Check, RotateCw, ChevronDown, HardDriveDownload, Loader2, Trash2 } from "lucide-react";
@@ -24,6 +24,7 @@ export default function Settings() {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [generatingWallet, setGeneratingWallet] = useState(false);
   const [confirmDisableEncryption, setConfirmDisableEncryption] = useState(false);
+  const [integrations, setIntegrations] = useState<IntegrationsStatus | null>(null);
   const saveSkipCount = useRef(0);
   const [originalEmbeddings, setOriginalEmbeddings] = useState<{ provider: string; model: string } | null>(null);
 
@@ -61,6 +62,7 @@ export default function Settings() {
   }
 
   useEffect(() => {
+    getIntegrations().then(setIntegrations).catch(() => {});
     getSettings().then((s) => {
       setSettings(s);
       setOriginalEmbeddings({ provider: s.embeddings.provider, model: s.embeddings.model });
@@ -323,7 +325,29 @@ export default function Settings() {
               onChange={(v) =>
                 setSettings({
                   ...settings,
-                  proxy: { ...settings.proxy, agentic_enabled: v },
+                  proxy: { agentic_enabled: v, capture_only: settings.proxy?.capture_only ?? false },
+                })
+              }
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-base font-semibold text-cream">Memorize only</p>
+              <p className="text-sm text-cream-muted mt-1">
+                {!integrations?.proxy.enabled
+                  ? "Enable the API proxy to use this feature"
+                  : integrations?.mcp.enabled && integrations?.proxy.enabled
+                  ? "Auto-enabled — MCP and proxy are both active. The proxy records conversations while MCP handles context injection, avoiding duplicate injection that can corrupt API requests."
+                  : "Record conversations without injecting memory context into responses"}
+              </p>
+            </div>
+            <Toggle
+              enabled={(settings.proxy?.capture_only ?? false) || (!!integrations?.mcp.enabled && !!integrations?.proxy.enabled)}
+              disabled={!integrations?.proxy.enabled || (!!integrations?.mcp.enabled && !!integrations?.proxy.enabled)}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  proxy: { agentic_enabled: settings.proxy?.agentic_enabled ?? true, capture_only: v },
                 })
               }
             />

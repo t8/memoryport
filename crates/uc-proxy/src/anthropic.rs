@@ -29,10 +29,13 @@ pub async fn proxy_messages(
         return forward_raw(&state, &headers, &body).await;
     }
 
+    // Capture-only mode: skip all injection, just forward and capture
+    let capture_only = state.agentic_config.capture_only().await;
+
     // Agentic path: inject tools and let the LLM query memory iteratively
     let agentic = state.agentic_config.agentic().await;
     let upstream_base = state.anthropic_upstream.as_deref().unwrap_or(ANTHROPIC_UPSTREAM);
-    if agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
+    if !capture_only && agentic.enabled && !crate::agentic::is_disabled_by_header(&headers) {
         return crate::agentic::run_agentic_loop(
             &state,
             &headers,
@@ -44,57 +47,61 @@ pub async fn proxy_messages(
         .await;
     }
 
-    // Fallback: single-shot context injection (original behavior)
-    debug!(query_len = last_user_msg.len(), "extracting context for Anthropic message");
+    // Fallback: single-shot context injection (skip if capture_only)
+    if capture_only {
+        debug!("capture_only mode — forwarding without injection");
+    }
 
     // Resolve memoryport://chunk/ references in the user message
     let resolved_msg = state.engine.resolve_refs(&last_user_msg).await;
     let clean_query = sanitize_query(&resolved_msg);
 
-    // 2. Search for relevant context, excluding current session
-    let current_session = state.sessions.get_session("anthropic").await;
-    let context = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
-        Ok(ref results) => {
-            let clean: Vec<_> = results
-                .iter()
-                .filter(|r| !is_system_prompt_leak(&r.content))
-                .filter(|r| r.session_id != current_session)
-                .cloned()
-                .collect();
-            debug!(
-                total = results.len(),
-                filtered = clean.len(),
-                "search returned results"
-            );
-            if clean.is_empty() {
-                None
-            } else {
-                Some(uc_core::assembler::assemble_context(&clean, state.context_budget))
+    // 2. Search and inject context (skip in capture_only mode)
+    if !capture_only {
+        let current_session = state.sessions.get_session("anthropic").await;
+        let context = match state.engine.search(&clean_query, &state.user_id, 20, None).await {
+            Ok(ref results) => {
+                let clean: Vec<_> = results
+                    .iter()
+                    .filter(|r| !is_system_prompt_leak(&r.content))
+                    .filter(|r| r.session_id != current_session)
+                    .cloned()
+                    .collect();
+                debug!(
+                    total = results.len(),
+                    filtered = clean.len(),
+                    "search returned results"
+                );
+                if clean.is_empty() {
+                    None
+                } else {
+                    Some(uc_core::assembler::assemble_context(&clean, state.context_budget))
+                }
             }
-        }
-        Err(ref e) => {
-            warn!(error = %e, "search error");
-            None
-        }
-    };
+            Err(ref e) => {
+                warn!(error = %e, "search error");
+                None
+            }
+        };
 
-    // 3. Inject context by appending to the last user message in the raw JSON
-    if let Some(ref ctx) = context {
-        if ctx.chunks_included > 0 {
-            debug!(
-                chunks = ctx.chunks_included,
-                tokens = ctx.token_count,
-                "injecting context"
-            );
+        // 3. Inject context by appending to the last user message in the raw JSON
+        if let Some(ref ctx) = context {
+            if ctx.chunks_included > 0 {
+                debug!(
+                    chunks = ctx.chunks_included,
+                    tokens = ctx.token_count,
+                    "injecting context"
+                );
 
-            let plain_context = format_plain_context(&ctx.formatted);
+                let plain_context = format_plain_context(&ctx.formatted);
 
-            let suffix = format!(
-                "\n\nFor additional context, here is information from my previous conversations that is relevant to my question:\n\n{}\n\nPlease use the above context to answer my question.",
-                plain_context
-            );
+                let suffix = format!(
+                    "\n\nFor additional context, here is information from my previous conversations that is relevant to my question:\n\n{}\n\nPlease use the above context to answer my question.",
+                    plain_context
+                );
 
-            append_to_last_user_message(&mut request, &suffix);
+                append_to_last_user_message(&mut request, &suffix);
+            }
         }
     }
 

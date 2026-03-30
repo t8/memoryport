@@ -202,6 +202,7 @@ export interface SettingsData {
   };
   proxy?: {
     agentic_enabled: boolean;
+    capture_only: boolean;
   };
   encryption: {
     enabled: boolean;

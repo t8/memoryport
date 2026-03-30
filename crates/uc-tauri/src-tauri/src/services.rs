@@ -192,37 +192,61 @@ impl ServiceManager {
             }
         }
 
-        // Give processes a moment to start, then check health
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        self.check_health().await;
+        // Wait for services to become healthy (up to 20 seconds)
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            self.check_health().await;
+            let server_ok = self.server.lock().await.status == ServiceStatus::Running;
+            let proxy_ok = self.proxy.lock().await.status == ServiceStatus::Running
+                || self.proxy.lock().await.user_stopped;
+            if server_ok && proxy_ok {
+                break;
+            }
+        }
     }
 
     pub async fn start_proxy(&self) {
         let config = self.config_path.to_string_lossy().to_string();
-        let mut svc = self.proxy.lock().await;
-        svc.user_stopped = false;
-        if svc.process.is_none() {
-            if let Some(bin) = self.find_binary("uc-proxy") {
-                tracing::info!("starting uc-proxy from {}", bin.display());
-                match Command::new(&bin)
-                    .arg("--config")
-                    .arg(&config)
-                    .arg("--listen")
-                    .arg("127.0.0.1:9191")
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .kill_on_drop(true)
-                    .spawn()
-                {
-                    Ok(child) => {
-                        svc.process = Some(child);
-                        svc.status = ServiceStatus::Starting;
-                        svc.started_at = Some(Instant::now());
+        {
+            let mut svc = self.proxy.lock().await;
+            svc.user_stopped = false;
+            if svc.process.is_none() {
+                if let Some(bin) = self.find_binary("uc-proxy") {
+                    tracing::info!("starting uc-proxy from {}", bin.display());
+                    match Command::new(&bin)
+                        .arg("--config")
+                        .arg(&config)
+                        .arg("--listen")
+                        .arg("127.0.0.1:9191")
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .kill_on_drop(true)
+                        .spawn()
+                    {
+                        Ok(child) => {
+                            svc.process = Some(child);
+                            svc.status = ServiceStatus::Starting;
+                            svc.started_at = Some(Instant::now());
+                        }
+                        Err(e) => tracing::error!("failed to start uc-proxy: {e}"),
                     }
-                    Err(e) => tracing::error!("failed to start uc-proxy: {e}"),
                 }
             }
         }
+        // Wait for proxy to become healthy (up to 20 seconds)
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            if let Ok(r) = self.http.get("http://127.0.0.1:9191/health").send().await {
+                if r.status().is_success() {
+                    let mut svc = self.proxy.lock().await;
+                    svc.status = ServiceStatus::Running;
+                    svc.started_at = Some(Instant::now());
+                    tracing::info!("proxy is healthy");
+                    return;
+                }
+            }
+        }
+        tracing::warn!("proxy did not become healthy within 20 seconds");
     }
 
     pub async fn stop_proxy(&self) {

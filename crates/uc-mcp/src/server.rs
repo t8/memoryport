@@ -190,13 +190,21 @@ impl UcMcpServer {
             let _ = self.engine.flush().await;
         }
 
+        // Use search() directly to bypass gating — MCP queries are explicit user requests
         match self
             .engine
-            .query(&query, user_id, params.session_id.as_deref(), max_tokens, None)
+            .search(&query, user_id, 20, None)
             .await
         {
-            Ok(ctx) if ctx.chunks_included == 0 => "No matching context found.".into(),
-            Ok(ctx) => ctx.formatted,
+            Ok(results) if results.is_empty() => "No matching context found.".into(),
+            Ok(results) => {
+                let ctx = uc_core::assembler::assemble_context(&results, max_tokens);
+                if ctx.chunks_included == 0 {
+                    "No matching context found.".into()
+                } else {
+                    ctx.formatted
+                }
+            }
             Err(e) => format!("Error: {e}"),
         }
     }

@@ -1,28 +1,16 @@
-import { useEffect, useState } from "react";
-import { getAnalytics, type AnalyticsData } from "../lib/api";
+import { useEffect } from "react";
 import Sparkline from "../components/Sparkline";
 import SegmentBar from "../components/SegmentBar";
 import SyncBar from "../components/SyncBar";
 import ActivityHeatmap from "../components/ActivityHeatmap";
 import StatusCard from "../components/StatusCard";
+import { useData } from "../lib/DataContext";
 
 export default function Analytics() {
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { analytics: data, loading, fetchAnalytics } = useData();
 
-  useEffect(() => {
-    getAnalytics()
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, []);
+  useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  if (error) {
-    return (
-      <div className="p-8">
-        <p className="text-error">Failed to load analytics: {error}</p>
-      </div>
-    );
-  }
 
   if (!data) {
     return (
