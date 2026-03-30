@@ -1,4 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
+import { Suspense } from "react";
 import { DataProvider } from "../lib/DataContext";
 import {
   LayoutAlt02,
@@ -70,7 +71,9 @@ export default function Layout() {
       {/* Main content */}
       <main className="flex-1 overflow-auto bg-bg">
         <DataProvider>
-          <Outlet />
+          <Suspense fallback={<div className="p-8 text-cream-muted">Loading...</div>}>
+            <Outlet />
+          </Suspense>
         </DataProvider>
       </main>
     </div>

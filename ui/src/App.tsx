@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { checkConfigExists, isTauri } from "./lib/api";
 import { events } from "./lib/telemetry";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import SessionDetail from "./pages/SessionDetail";
-import Analytics from "./pages/Analytics";
-import Graph from "./pages/Graph";
 import Integrations from "./pages/Integrations";
 import Settings from "./pages/Settings";
 import Setup from "./pages/Setup";
+
+// Lazy-load expensive pages (d3 charts, graph simulation)
+const Analytics = lazy(() => import("./pages/Analytics"));
+const Graph = lazy(() => import("./pages/Graph"));
 
 function FirstRunGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
