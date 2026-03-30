@@ -289,10 +289,10 @@ export default function Settings() {
         </section>
 
         {/* Retrieval */}
-        <section className="border border-border bg-bg p-6">
-          <div className="flex items-center gap-2 mb-6">
+        <section className="border border-border bg-bg p-6 space-y-6">
+          <div className="flex items-center gap-2">
             <h3 className="text-xl font-semibold text-cream">Retrieval</h3>
-            <Tooltip content="Controls how Memoryport decides what context to surface. Smart gating prevents unnecessary searches on simple messages." />
+            <Tooltip content="Controls how Memoryport decides what context to surface and how the proxy retrieves relevant memories." />
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -311,19 +311,11 @@ export default function Settings() {
               }
             />
           </div>
-        </section>
-
-        {/* Proxy */}
-        <section className="border border-border bg-bg p-6">
-          <div className="flex items-center gap-2 mb-6">
-            <h3 className="text-xl font-semibold text-cream">Proxy</h3>
-            <Tooltip content="The proxy sits between your editor and the AI provider, injecting relevant context and capturing conversations automatically." />
-          </div>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-base font-semibold text-cream">Multi-turn Retrieval</p>
               <p className="text-sm text-cream-muted mt-1">
-                Let the LLM iteratively query memory with tool calls before responding
+                Let the LLM iteratively query memory via tool calls before responding (doesn't support MCP — proxy only)
               </p>
             </div>
             <Toggle
@@ -466,7 +458,7 @@ export default function Settings() {
               </div>
             </div>
           )}
-          {settings.arweave.api_key && settings.arweave.storage_limit_bytes != null && (
+          {settings.arweave.api_key && settings.arweave.storage_limit_bytes != null && (<>
             <div className="pt-2">
               <div className="flex items-start justify-between">
                 <div>
@@ -546,7 +538,7 @@ export default function Settings() {
                 </div>
               )}
             </div>
-          )}
+          </>)}
         </section>
 
         {/* Encryption */}

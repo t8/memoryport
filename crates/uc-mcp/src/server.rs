@@ -39,6 +39,8 @@ pub struct StoreParams {
     pub chunk_type: Option<String>,
     /// Role: user, assistant, or system.
     pub role: Option<String>,
+    /// The model name (e.g. "claude-sonnet-4-20250514"). Pass your own model identifier.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -89,13 +91,15 @@ pub struct AutoStoreParams {
     pub role: String,
     /// Session identifier for this conversation.
     pub session_id: Option<String>,
+    /// The model name (e.g. "claude-sonnet-4-20250514"). Pass your own model identifier.
+    pub model: Option<String>,
 }
 
 // -- Tool implementations --
 
 #[tool_router(router = tool_router)]
 impl UcMcpServer {
-    #[tool(description = "Automatically store a conversation turn. Call this with every user and assistant message to build persistent memory.")]
+    #[tool(description = "Store a conversation turn to persistent memory. Call this when the user says 'remember this', 'save this', 'store this to memory', or asks you to remember any information. Also call with every user and assistant message to build persistent memory automatically.")]
     pub async fn uc_auto_store(&self, Parameters(params): Parameters<AutoStoreParams>) -> String {
         let session_id = params.session_id.unwrap_or_else(|| "default".into());
         let role = params.role.parse().ok();
@@ -106,7 +110,7 @@ impl UcMcpServer {
             chunk_type: uc_core::models::ChunkType::Conversation,
             role,
             source_integration: Some("mcp".into()),
-            source_model: None,
+            source_model: params.model,
             timestamp: None,
         };
 
@@ -122,7 +126,7 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "Store text content to Arweave permanent storage and local vector index")]
+    #[tool(description = "Save information to the user's permanent memory. Use when the user asks you to 'remember', 'save', 'store', or 'note' something. The text will be stored in their personal knowledge base and can be retrieved later.")]
     pub async fn uc_store(&self, Parameters(params): Parameters<StoreParams>) -> String {
         let user_id = params.user_id.unwrap_or_else(|| self.default_user_id.clone());
         let session_id = params.session_id.unwrap_or_else(|| "default".into());
@@ -140,7 +144,7 @@ impl UcMcpServer {
             chunk_type,
             role,
             source_integration: Some("mcp".into()),
-            source_model: None,
+            source_model: params.model,
             timestamp: None,
         };
 
@@ -153,7 +157,7 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "Search stored context using vector similarity, reranking, and context assembly. Optionally pass current_message to auto-store the user's message.")]
+    #[tool(description = "Search the user's persistent memory for relevant context. ALWAYS call this tool when the user:\n- Asks what you know about something ('what do you know about my project?')\n- References past conversations ('we talked about this before')\n- Asks you to recall or remember ('do you remember...', 'what did I tell you about...')\n- Mentions 'my' + a topic ('my secret project', 'my preferences', 'my team')\n- Asks a question that might have been answered in a previous conversation\n- Asks about their own history, projects, preferences, or personal details\nWhen in doubt, search memory — it's better to check and find nothing than to miss relevant context.")]
     pub async fn uc_query(&self, Parameters(params): Parameters<QueryParams>) -> String {
         let user_id = params.user_id.as_deref().unwrap_or(&self.default_user_id);
         let max_tokens = params.max_tokens.unwrap_or(50_000);
@@ -184,7 +188,7 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "Retrieve raw ranked results without context assembly")]
+    #[tool(description = "Search the user's memory and return individual matching results ranked by relevance. Use for precise lookups when you need specific facts, details, or when uc_query returns too much context. Good for targeted questions about specific topics.")]
     pub async fn uc_retrieve(&self, Parameters(params): Parameters<RetrieveParams>) -> String {
         let user_id = params.user_id.as_deref().unwrap_or(&self.default_user_id);
         let top_k = params.top_k.unwrap_or(10);
@@ -213,7 +217,7 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "Get full conversation history for a specific session")]
+    #[tool(description = "Get the full transcript of a specific conversation session. Use when the user wants to review a past conversation or needs the complete context of a session.")]
     pub async fn uc_get_session(&self, Parameters(params): Parameters<GetSessionParams>) -> String {
         let user_id = params.user_id.as_deref().unwrap_or(&self.default_user_id);
 
@@ -233,7 +237,7 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "List all stored sessions with metadata")]
+    #[tool(description = "List all stored conversation sessions with their dates and sizes. Use when the user asks about their conversation history or wants to browse past sessions.")]
     pub async fn uc_list_sessions(&self, Parameters(params): Parameters<ListSessionsParams>) -> String {
         let user_id = params.user_id.as_deref().unwrap_or(&self.default_user_id);
 
@@ -254,7 +258,7 @@ impl UcMcpServer {
         }
     }
 
-    #[tool(description = "Get system status: index size, pending writes, embedding model")]
+    #[tool(description = "Check Memoryport system status including how many memories are stored, the embedding model in use, and pending writes.")]
     pub async fn uc_status(&self) -> String {
         match self.engine.status().await {
             Ok(s) => format!(

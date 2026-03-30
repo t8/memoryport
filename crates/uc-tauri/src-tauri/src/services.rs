@@ -332,15 +332,19 @@ impl ServiceManager {
             },
             ollama: ServiceInfo {
                 name: "ollama".to_string(),
-                status: if ollama_running {
+                status: if ollama_running && Self::is_proxy_configured() {
                     ServiceStatus::Running
+                } else if ollama_running {
+                    ServiceStatus::Stopped // Ollama available but proxy not configured
                 } else {
                     ServiceStatus::Stopped
                 },
                 uptime_secs: None,
                 restart_count: 0,
-                details: Some(if ollama_running {
-                    "available".into()
+                details: Some(if ollama_running && Self::is_proxy_configured() {
+                    "capturing via proxy".into()
+                } else if ollama_running {
+                    "available (enable proxy to capture)".into()
                 } else {
                     "not detected".into()
                 }),

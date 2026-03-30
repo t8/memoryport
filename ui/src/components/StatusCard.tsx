@@ -6,6 +6,7 @@ interface StatusCardProps {
   suffix?: string;
   detail?: string;
   tooltip?: string;
+  tooltipAlign?: "center" | "left" | "right";
 }
 
 function compactNumber(value: string | number): string {
@@ -18,7 +19,7 @@ function compactNumber(value: string | number): string {
   return num.toLocaleString();
 }
 
-export default function StatusCard({ label, value, suffix, detail, tooltip }: StatusCardProps) {
+export default function StatusCard({ label, value, suffix, detail, tooltip, tooltipAlign }: StatusCardProps) {
   const isNumeric = typeof value === "number" || /^[\d,]+[KMBGTkmb%]?$/.test(String(value));
   // If already has a unit suffix (K, M, B), keep as-is; otherwise compact
   const raw = String(value);
@@ -29,7 +30,7 @@ export default function StatusCard({ label, value, suffix, detail, tooltip }: St
     <div className="border border-border bg-bg p-6">
       <div className="flex items-center gap-1.5">
         <p className="text-base text-cream">{label}</p>
-        {tooltip && <Tooltip content={tooltip} />}
+        {tooltip && <Tooltip content={tooltip} align={tooltipAlign} />}
       </div>
       <div className="flex flex-wrap items-baseline gap-x-2 mt-1">
         <p

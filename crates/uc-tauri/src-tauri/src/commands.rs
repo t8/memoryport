@@ -77,7 +77,7 @@ pub async fn list_sessions(
     let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let sessions = engine
-            .list_sessions("default")
+            .list_sessions(engine.user_id())
             .await
             .map_err(|e| e.to_string())?;
         Ok(sessions
@@ -103,7 +103,7 @@ pub async fn get_session(
     let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let chunks = engine
-            .get_session("default", &session_id)
+            .get_session(engine.user_id(), &session_id)
             .await
             .map_err(|e| e.to_string())?;
         Ok(chunks
@@ -133,7 +133,7 @@ pub async fn retrieve(
     let top_k = top_k.unwrap_or(50);
     rt.0.spawn(async move {
         let results = engine
-            .retrieve(&query, "default", None, None)
+            .retrieve(&query, engine.user_id(), None, None)
             .await
             .map_err(|e| e.to_string())?;
         Ok(results
@@ -217,7 +217,7 @@ pub async fn get_graph(
 ) -> Result<GraphData, String> {
     let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
-        let graph = engine.graph("default").await.map_err(|e| e.to_string())?;
+        let graph = engine.graph(engine.user_id()).await.map_err(|e| e.to_string())?;
         Ok(GraphData {
             nodes: graph
                 .nodes
@@ -280,7 +280,7 @@ pub async fn get_analytics(
     let engine = get_engine(&engine).await?;
     rt.0.spawn(async move {
         let a = engine
-            .analytics("default")
+            .analytics(engine.user_id())
             .await
             .map_err(|e| e.to_string())?;
         Ok(AnalyticsData {
@@ -407,9 +407,10 @@ pub async fn toggle_integration(
                     message: "MCP server registered — restart your editor to activate".into(),
                 })
             } else {
-                // Unregister MCP from ~/.claude.json and ~/.cursor/mcp.json
+                // Unregister MCP from all clients
                 for path in &[
                     dirs::home_dir().map(|h| h.join(".claude.json")),
+                    dirs::home_dir().map(|h| h.join("Library/Application Support/Claude/claude_desktop_config.json")),
                     dirs::home_dir().map(|h| h.join(".cursor/mcp.json")),
                 ] {
                     if let Some(ref p) = path {
@@ -926,33 +927,22 @@ pub async fn pull_ollama_model(model: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn register_mcp() -> Result<(), String> {
-    let claude_json = dirs::home_dir()
-        .ok_or("no home dir")?
-        .join(".claude.json");
+    let home = dirs::home_dir().ok_or("no home dir")?;
 
-    let mut data: serde_json::Value = if claude_json.exists() {
-        let content = std::fs::read_to_string(&claude_json).map_err(|e| e.to_string())?;
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    // Find uc-mcp binary
-    let mcp_path = which::which("uc-mcp")
+    // Find uc-mcp binary: sidecar (production) → target/debug (dev) → PATH → ~/.memoryport/bin
+    let mcp_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("uc-mcp")))
+        .filter(|p| p.exists())
+        .or_else(|| which::which("uc-mcp").ok())
+        .or_else(|| {
+            let p = home.join(".memoryport/bin/uc-mcp");
+            p.exists().then_some(p)
+        })
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_default()
-                .join(".memoryport/bin/uc-mcp")
-                .to_string_lossy()
-                .to_string()
-        });
+        .unwrap_or_else(|| "uc-mcp".into());
 
-    let config_path = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".memoryport/uc.toml")
-        .to_string_lossy()
-        .to_string();
+    let config_path = home.join(".memoryport/uc.toml").to_string_lossy().to_string();
 
     let mcp_entry = serde_json::json!({
         "command": mcp_path,
@@ -960,48 +950,39 @@ pub async fn register_mcp() -> Result<(), String> {
         "type": "stdio"
     });
 
-    data.as_object_mut()
-        .unwrap()
-        .entry("mcpServers")
-        .or_insert(serde_json::json!({}))
-        .as_object_mut()
-        .unwrap()
-        .insert("memoryport".into(), mcp_entry);
+    // Register in all supported clients
+    let targets = vec![
+        // Claude Code
+        home.join(".claude.json"),
+        // Claude Desktop (macOS)
+        home.join("Library/Application Support/Claude/claude_desktop_config.json"),
+        // Cursor
+        home.join(".cursor/mcp.json"),
+    ];
 
-    let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    std::fs::write(&claude_json, content).map_err(|e| e.to_string())?;
+    for path in &targets {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
 
-    // Also register in Cursor
-    let cursor_json = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".cursor/mcp.json");
-    if let Some(parent) = cursor_json.parent() {
-        std::fs::create_dir_all(parent).ok();
+        let mut data: serde_json::Value = if path.exists() {
+            let content = std::fs::read_to_string(path).unwrap_or("{}".into());
+            serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        data.as_object_mut()
+            .unwrap()
+            .entry("mcpServers")
+            .or_insert(serde_json::json!({}))
+            .as_object_mut()
+            .unwrap()
+            .insert("memoryport".into(), mcp_entry.clone());
+
+        let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+        std::fs::write(path, content).map_err(|e| e.to_string())?;
     }
-    let mut cursor_data: serde_json::Value = if cursor_json.exists() {
-        let content = std::fs::read_to_string(&cursor_json).unwrap_or("{}".into());
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    let mcp_entry = serde_json::json!({
-        "command": mcp_path,
-        "args": ["--config", config_path],
-        "type": "stdio"
-    });
-
-    cursor_data
-        .as_object_mut()
-        .unwrap()
-        .entry("mcpServers")
-        .or_insert(serde_json::json!({}))
-        .as_object_mut()
-        .unwrap()
-        .insert("memoryport".into(), mcp_entry);
-
-    let content = serde_json::to_string_pretty(&cursor_data).map_err(|e| e.to_string())?;
-    std::fs::write(&cursor_json, content).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -1171,29 +1152,22 @@ pub async fn reset_all_data(
     // 3. Unregister proxy (restore original ANTHROPIC_BASE_URL)
     let _ = unregister_proxy().await;
 
-    // 4. Remove MCP from ~/.claude.json
+    // 4. Remove MCP from all clients
     if let Some(home) = dirs::home_dir() {
-        let claude_json = home.join(".claude.json");
-        if claude_json.exists() {
-            if let Ok(content) = std::fs::read_to_string(&claude_json) {
-                if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
-                        servers.remove("memoryport");
+        let mcp_configs = vec![
+            home.join(".claude.json"),
+            home.join("Library/Application Support/Claude/claude_desktop_config.json"),
+            home.join(".cursor/mcp.json"),
+        ];
+        for path in &mcp_configs {
+            if path.exists() {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+                            servers.remove("memoryport");
+                        }
+                        let _ = std::fs::write(path, serde_json::to_string_pretty(&data).unwrap_or_default());
                     }
-                    let _ = std::fs::write(&claude_json, serde_json::to_string_pretty(&data).unwrap_or_default());
-                }
-            }
-        }
-
-        // 5. Remove MCP from ~/.cursor/mcp.json
-        let cursor_json = home.join(".cursor").join("mcp.json");
-        if cursor_json.exists() {
-            if let Ok(content) = std::fs::read_to_string(&cursor_json) {
-                if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(servers) = data.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
-                        servers.remove("memoryport");
-                    }
-                    let _ = std::fs::write(&cursor_json, serde_json::to_string_pretty(&data).unwrap_or_default());
                 }
             }
         }

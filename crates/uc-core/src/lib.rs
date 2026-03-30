@@ -447,6 +447,15 @@ impl Engine {
             .unwrap_or_else(|| "local".to_string());
         info!(user_id = %user_id, "engine user_id set");
 
+        // Migrate data from legacy "default" user_id to wallet address
+        if user_id != "local" && user_id != "default" {
+            match index.migrate_user_id("default", &user_id).await {
+                Ok(0) => {} // nothing to migrate
+                Ok(n) => info!(count = n, "migrated chunks from 'default' to wallet user_id"),
+                Err(e) => tracing::warn!(error = %e, "user_id migration failed (non-fatal)"),
+            }
+        }
+
         let batcher = Batcher::new(50, Duration::from_secs(60), &user_id, on_flush);
 
         Ok(Self {
@@ -537,6 +546,7 @@ impl Engine {
 
     /// Retrieve raw results without assembly (useful for debugging / CLI).
     /// Uses hybrid retrieval (chunks + facts with RRF fusion).
+    /// Explicit retrieval — bypasses gating (for search bars, CLI, MCP tools).
     pub async fn retrieve(
         &self,
         text: &str,
@@ -544,14 +554,11 @@ impl Engine {
         active_session_id: Option<&str>,
         reference_time: Option<i64>,
     ) -> Result<Vec<SearchResult>, EngineError> {
-        let candidates = self
-            .retriever
-            .retrieve_hybrid(text, user_id, active_session_id, reference_time)
-            .await?;
+        let results = self.search(text, user_id, 50, reference_time).await?;
 
         let ranked = self
             .reranker
-            .rerank(text, candidates, active_session_id)
+            .rerank(text, results, active_session_id)
             .await?;
 
         Ok(ranked)

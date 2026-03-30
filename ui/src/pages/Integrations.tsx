@@ -129,13 +129,14 @@ export default function Integrations() {
                   <Tooltip content="The MCP server is registered in your editor config and starts automatically when the editor launches. It runs over stdio — there's no background process to monitor." />
                 </div>
                 <p className="text-sm text-cream-muted mt-1">
-                  Provides memory tools to Claude Code, Cursor, and other MCP-compatible editors
+                  Provides memory tools to Claude, Claude Code, Cursor, and other MCP-compatible clients
                 </p>
                 <div className="flex items-center gap-2 mt-3">
                   <span className="text-xs text-cream-dim">Works with:</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Claude Code</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Cursor</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any MCP client</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#D97757", borderColor: "rgba(217,119,87,0.3)", backgroundColor: "rgba(217,119,87,0.1)"}}>Claude</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#D97757", borderColor: "rgba(217,119,87,0.3)", backgroundColor: "rgba(217,119,87,0.1)"}}>Claude Code</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#00A2FF", borderColor: "rgba(0,162,255,0.3)", backgroundColor: "rgba(0,162,255,0.1)"}}>Cursor</span>
+                  <span className="text-xs text-cream-muted px-2 py-0.5 rounded border border-border bg-surface">Any MCP client</span>
                 </div>
               </div>
             </div>
@@ -191,10 +192,10 @@ export default function Integrations() {
                 </p>
                 <div className="flex items-center gap-2 mt-3 flex-wrap">
                   <span className="text-xs text-cream-dim">Works with:</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Claude Code</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Cursor</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">ChatGPT API</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any OpenAI-compatible app</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#D97757", borderColor: "rgba(217,119,87,0.3)", backgroundColor: "rgba(217,119,87,0.1)"}}>Claude Code</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#00A2FF", borderColor: "rgba(0,162,255,0.3)", backgroundColor: "rgba(0,162,255,0.1)"}}>Cursor</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#10A37F", borderColor: "rgba(16,163,127,0.3)", backgroundColor: "rgba(16,163,127,0.1)"}}>ChatGPT API</span>
+                  <span className="text-xs text-cream-muted px-2 py-0.5 rounded border border-border bg-surface">Any OpenAI-compatible app</span>
                 </div>
                 {proxyEnabled && health.proxy.status !== "running" && <ServiceOfflineWarning />}
               </div>
@@ -253,10 +254,10 @@ export default function Integrations() {
                 </p>
                 <div className="flex items-center gap-2 mt-3 flex-wrap">
                   <span className="text-xs text-cream-dim">Works with:</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Open WebUI</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Continue.dev</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Ollama CLI</span>
-                  <span className="text-xs text-cream bg-surface border border-border px-2 py-0.5 rounded">Any Ollama client</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#8B5CF6", borderColor: "rgba(139,92,246,0.3)", backgroundColor: "rgba(139,92,246,0.1)"}}>Open WebUI</span>
+                  <span className="text-xs px-2 py-0.5 rounded border" style={{color: "#F59E0B", borderColor: "rgba(245,158,11,0.3)", backgroundColor: "rgba(245,158,11,0.1)"}}>Continue.dev</span>
+                  <span className="text-xs text-cream-muted px-2 py-0.5 rounded border border-cream-dim/30 bg-cream-dim/10">Ollama CLI</span>
+                  <span className="text-xs text-cream-muted px-2 py-0.5 rounded border border-border bg-surface">Any Ollama client</span>
                 </div>
                 {health.ollama.status !== "running" && proxyEnabled && <ServiceOfflineWarning />}
               </div>

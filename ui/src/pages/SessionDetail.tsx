@@ -158,15 +158,15 @@ export default function SessionDetail() {
                 className="border border-border bg-bg p-6"
               >
                 <div className="flex items-center gap-2 mb-4">
-                  {chunk.role === "assistant" ? (
-                    <Bot size={20} className="text-accent" />
-                  ) : (
+                  {chunk.role === "user" ? (
                     <User size={20} className="text-cream-muted" />
+                  ) : (
+                    <Bot size={20} className="text-accent" />
                   )}
                   <span className="text-sm text-cream">
-                    {chunk.role === "assistant" && chunk.source_model
-                      ? chunk.source_model
-                      : chunk.role || "unknown"}
+                    {chunk.role === "user"
+                      ? "You"
+                      : chunk.source_model || chunk.role || "Assistant"}
                   </span>
                   {chunk.source_integration && (
                     <span className="text-xs text-cream-dim bg-surface border border-border px-2 py-0.5 font-mono rounded">

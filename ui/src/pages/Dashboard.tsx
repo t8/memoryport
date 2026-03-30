@@ -162,6 +162,7 @@ export default function Dashboard() {
           value={status?.embedding_model ?? "—"}
           detail={status ? `${status.embedding_dimensions}d` : undefined}
           tooltip="The model used to convert text into vectors for semantic search. Dimensions (d) affect search precision."
+          tooltipAlign="right"
         />
       </div>
 

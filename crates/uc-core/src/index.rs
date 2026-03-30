@@ -703,6 +703,39 @@ impl Index {
 
         Ok(search_results)
     }
+
+    /// Migrate chunks from an old user_id to a new one.
+    /// Used to transition data from "default" to wallet-based user_id.
+    pub async fn migrate_user_id(&self, old_id: &str, new_id: &str) -> Result<usize, IndexError> {
+        self.checkout_latest().await?;
+        let filter = format!("user_id = '{}'", sanitize_sql(old_id));
+        let count = self.table.query()
+            .only_if(&filter)
+            .limit(1)
+            .execute()
+            .await?
+            .try_collect::<Vec<_>>()
+            .await?
+            .iter()
+            .map(|b| b.num_rows())
+            .sum::<usize>();
+
+        if count == 0 {
+            return Ok(0);
+        }
+
+        // LanceDB update: set user_id = new_id where user_id = old_id
+        self.table
+            .update()
+            .only_if(filter)
+            .column("user_id", format!("'{}'", sanitize_sql(new_id)))
+            .execute()
+            .await?;
+
+        let total = self.table.count_rows(Some(format!("user_id = '{}'", sanitize_sql(new_id)))).await.unwrap_or(0) as usize;
+        tracing::info!(old_id, new_id, migrated = total, "migrated user_id");
+        Ok(total)
+    }
 }
 
 /// Build an Arrow RecordBatch from chunk entries.
