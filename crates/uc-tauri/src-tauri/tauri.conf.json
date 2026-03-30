@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/nicedoc/tauri-schema/refs/heads/main/tauri-conf-2.1.0.json",
   "productName": "Memoryport",
   "identifier": "com.memoryport.app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "build": {
     "frontendDist": "../../../ui/dist",
     "devUrl": "http://localhost:5174",

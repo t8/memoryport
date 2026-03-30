@@ -62,7 +62,7 @@ export default function Layout() {
 
           {/* Version */}
           <div className="px-6 py-4 flex items-center gap-2">
-            <span className="text-sm text-cream-dim font-mono">v 0.1.1</span>
+            <span className="text-sm text-cream-dim font-mono">v 0.1.2</span>
             <UpdateBadge />
           </div>
         </div>
