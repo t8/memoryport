@@ -126,12 +126,15 @@ impl UcMcpServer {
 
         match self.engine.store(&content, store_params).await {
             Ok(_) => {
-                let _ = self.engine.flush().await;
+                if let Err(e) = self.engine.flush().await {
+                    tracing::error!(error = %e, "flush failed after store");
+                    return format!("store buffered but flush failed: {e}");
+                }
                 "stored".into()
             }
             Err(e) => {
                 tracing::warn!(error = %e, "auto-store failed");
-                "ok".into() // don't surface errors to the LLM
+                format!("store failed: {e}")
             }
         }
     }
@@ -160,7 +163,10 @@ impl UcMcpServer {
 
         match self.engine.store(&params.text, store_params).await {
             Ok(ids) => {
-                let _ = self.engine.flush().await;
+                if let Err(e) = self.engine.flush().await {
+                    tracing::error!(error = %e, "flush failed after store");
+                    return format!("Stored {} chunk(s) but flush failed: {e}", ids.len());
+                }
                 format!("Stored {} chunk(s)", ids.len())
             }
             Err(e) => format!("Error: {e}"),
@@ -186,8 +192,12 @@ impl UcMcpServer {
                 source_model: None,
                 timestamp: None,
             };
-            let _ = self.engine.store(msg, store_params).await;
-            let _ = self.engine.flush().await;
+            if let Err(e) = self.engine.store(msg, store_params).await {
+                tracing::warn!(error = %e, "query side-effect store failed");
+            }
+            if let Err(e) = self.engine.flush().await {
+                tracing::error!(error = %e, "query side-effect flush failed");
+            }
         }
 
         // Use search() directly to bypass gating — MCP queries are explicit user requests

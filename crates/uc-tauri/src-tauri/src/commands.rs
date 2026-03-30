@@ -863,19 +863,31 @@ pub async fn restart_service(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn check_ollama_installed() -> Result<bool, String> {
-    // 1. Check PATH (works when user's shell PATH is inherited)
-    if which::which("ollama").is_ok() {
-        return Ok(true);
+/// Resolve the full path to the `ollama` binary.
+/// Production Tauri apps on macOS get a minimal PATH that excludes
+/// /usr/local/bin and /opt/homebrew/bin, so we check known locations.
+fn resolve_ollama_bin() -> Option<String> {
+    if let Ok(p) = which::which("ollama") {
+        return Some(p.to_string_lossy().to_string());
     }
-    // 2. Check known install paths (Tauri GUI apps may not inherit full PATH)
-    for path in &["/usr/local/bin/ollama", "/usr/bin/ollama"] {
+    for path in &[
+        "/usr/local/bin/ollama",
+        "/opt/homebrew/bin/ollama",
+        "/usr/bin/ollama",
+    ] {
         if std::path::Path::new(path).exists() {
-            return Ok(true);
+            return Some(path.to_string());
         }
     }
-    // 3. Check if Ollama is already running (Ollama.app serves on 11434)
+    None
+}
+
+#[tauri::command]
+pub async fn check_ollama_installed() -> Result<bool, String> {
+    if resolve_ollama_bin().is_some() {
+        return Ok(true);
+    }
+    // Ollama.app may be running even without the CLI in PATH
     if let Ok(resp) = reqwest::Client::new()
         .get("http://127.0.0.1:11434")
         .timeout(std::time::Duration::from_secs(2))
@@ -917,7 +929,9 @@ pub async fn install_ollama() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn pull_ollama_model(model: String) -> Result<(), String> {
-    let output = tokio::process::Command::new("ollama")
+    let bin = resolve_ollama_bin()
+        .ok_or_else(|| "Ollama binary not found".to_string())?;
+    let output = tokio::process::Command::new(&bin)
         .args(["pull", &model])
         .output()
         .await

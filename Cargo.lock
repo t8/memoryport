@@ -8795,7 +8795,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "uc-arweave"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -8813,7 +8813,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -8830,7 +8830,7 @@ dependencies = [
 
 [[package]]
 name = "uc-core"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -8863,7 +8863,7 @@ dependencies = [
 
 [[package]]
 name = "uc-embeddings"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -8876,7 +8876,7 @@ dependencies = [
 
 [[package]]
 name = "uc-mcp"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8893,7 +8893,7 @@ dependencies = [
 
 [[package]]
 name = "uc-proxy"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -8913,7 +8913,7 @@ dependencies = [
 
 [[package]]
 name = "uc-server"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "axum",

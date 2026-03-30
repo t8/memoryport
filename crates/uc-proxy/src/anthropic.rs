@@ -22,6 +22,10 @@ pub async fn proxy_messages(
         StatusCode::BAD_REQUEST
     })?;
 
+    // Strip empty/redacted thinking blocks — clients send back conversation history
+    // with thinking blocks where the `thinking` field is empty, which the API rejects.
+    strip_empty_thinking_blocks(&mut request);
+
     // 1. Extract the last user message text
     let last_user_msg = extract_last_user_text(&request);
 
@@ -408,6 +412,29 @@ pub fn format_plain_context(formatted: &str) -> String {
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Strip thinking blocks with empty/missing `thinking` field from all messages.
+/// Clients (e.g. Claude Code) send back conversation history with redacted thinking
+/// blocks, but the Anthropic API requires every thinking block to contain content.
+pub fn strip_empty_thinking_blocks(request: &mut serde_json::Value) {
+    let messages = match request.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        Some(m) => m,
+        None => return,
+    };
+    for msg in messages.iter_mut() {
+        if let Some(content) = msg.get_mut("content").and_then(|c| c.as_array_mut()) {
+            content.retain(|block| {
+                let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if block_type == "thinking" {
+                    let thinking = block.get("thinking").and_then(|t| t.as_str()).unwrap_or("");
+                    !thinking.is_empty()
+                } else {
+                    true
+                }
+            });
+        }
+    }
 }
 
 fn sanitize_query(query: &str) -> String {

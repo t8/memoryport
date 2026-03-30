@@ -448,18 +448,21 @@ fn append_round_to_messages(
                 .cloned()
                 .unwrap_or(Value::Array(vec![]));
 
-            // If stripping client calls, remove non-memoryport tool_use blocks
-            if strip_client_calls {
-                if let Some(arr) = assistant_content.as_array_mut() {
-                    arr.retain(|block| {
-                        let is_tool_use = block.get("type").and_then(|t| t.as_str()) == Some("tool_use");
-                        if !is_tool_use {
-                            return true;
-                        }
+            // Strip thinking blocks and optionally non-memoryport tool_use blocks
+            if let Some(arr) = assistant_content.as_array_mut() {
+                arr.retain(|block| {
+                    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    // Always strip thinking blocks — they cause errors when sent back
+                    if block_type == "thinking" {
+                        return false;
+                    }
+                    // If stripping client calls, remove non-memoryport tool_use blocks
+                    if strip_client_calls && block_type == "tool_use" {
                         let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        name.starts_with(TOOL_PREFIX)
-                    });
-                }
+                        return name.starts_with(TOOL_PREFIX);
+                    }
+                    true
+                });
             }
 
             messages.push(serde_json::json!({
