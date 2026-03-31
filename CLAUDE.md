@@ -12,7 +12,7 @@ Memoryport is a Rust workspace that gives LLM interactions persistent, queryable
 ```bash
 cargo check                # type-check entire workspace
 cargo build                # build all crates
-cargo test --workspace     # run all tests (64+ tests)
+cargo test --workspace     # run all tests (167+ tests)
 cargo build -p uc-cli      # CLI only
 cargo build -p uc-mcp      # MCP server only
 cargo build -p uc-proxy    # API proxy only
@@ -76,9 +76,12 @@ cd ui && pnpm dev
 ```
 uc-arweave     — Arweave client (JWK wallet, ANS-104 data items, Turbo uploads, GraphQL)
 uc-embeddings  — Embedding + LLM providers (OpenAI, Ollama) for embeddings and query enhancement
-uc-core        — Core engine: chunker, tagger, batcher, writer, LanceDB index, retriever,
-                 reranker, assembler, analyzer, enhancer (query expansion + HyDE), crypto,
-                 keystore, gate (3-gate retrieval gating), analytics, rebuild
+uc-core        — Core engine: chunker, tagger, batcher, writer, LanceDB index (chunks + facts tables),
+                 retriever (hybrid vector+BM25+entity with RRF fusion), reranker, assembler,
+                 analyzer, enhancer (query expansion + HyDE), facts (NLP extraction),
+                 entities (Jaro-Winkler dedup), profile (user profile cache),
+                 contradiction (fact superseding), crypto, keystore,
+                 gate (3-gate retrieval gating), analytics, rebuild
 uc-cli         — CLI binary with interactive setup wizard (`uc init`)
 uc-mcp         — MCP server: 7 tools + 2 resources, auto-capture via uc_auto_store
 uc-proxy       — Multi-protocol proxy: Anthropic /v1/messages, OpenAI /v1/chat/completions,
@@ -122,8 +125,11 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - **Context window**: tokens the LLM sees in one call (model constraint, e.g. 200K)
 - **Context space**: total persistent memory available for retrieval and injection (system property, measured in tokens/chunks/bytes)
 - **Chunk**: ~1,500 characters ≈ **375 tokens** (with 200-char overlap between adjacent chunks). Character-based splitting at sentence boundaries.
+- **Fact**: atomic subject-predicate-object triple extracted from a chunk (e.g., "user lives_in Austin"). Stored in a separate LanceDB table with its own embedding, dual timestamps, and validity tracking.
+- **Entity**: deduplicated named entity (person, place, project, tool) with aliases, tracked via Jaro-Winkler similarity for fuzzy matching.
 - **Batch**: group of up to 50 chunks flushed together as one Arweave transaction
 - **AMP**: Augmented Memory Protocol — the [open spec](https://github.com/t8/amp-spec) for how memory enters the prompt
+- **RRF**: Reciprocal Rank Fusion — algorithm for merging multiple ranked result sets (chunk search + fact search)
 
 ## Key Technical Decisions
 
@@ -145,6 +151,14 @@ Frontend: `ui/` — React 19 + Vite + Tailwind. Dashboard, analytics, integratio
 - **AccountClient** — `uc-core/src/account.rs` handles key validation (1-hour cache), usage reporting, graceful fallback to local-only on network errors.
 - **Hot-reloadable proxy config** — `HotConfig` in proxy checks config file mtime on each request. Settings changes (e.g., multi-turn toggle) take effect without proxy restart.
 - **Augmented Memory Protocol (AMP)** — the context injection approach is being standardized as [AMP](https://github.com/t8/amp-spec), defining how memory enters the prompt (append, system, tool strategies).
+- **Hybrid retrieval with RRF** — parallel vector search on chunks + vector search on facts, merged via Reciprocal Rank Fusion (k=60). Facts provide high-precision atomic matches; chunks provide full conversation context.
+- **NLP-based fact extraction (no LLM required)** — regex patterns extract preferences, personal info, temporal statements, project references from conversation text. Optional LLM mode for higher quality. Runs at ingestion time, not query time.
+- **Dual timestamps on facts** — `document_date` (when conversation happened) + `event_date` (when the fact became true). Enables temporal queries like "what changed" and "when did X happen".
+- **Contradiction resolution at ingestion** — when a new fact has the same subject + conflicting predicate as an existing fact (e.g., lives_in NYC → lives_in London), the old fact is marked `valid=false` with `superseded_by` pointing to the new fact. Old facts are never deleted — they're preserved for temporal history.
+- **Session diversity** — hybrid retrieval caps results at 5 chunks per session to ensure broad coverage across sessions. Prevents a single semantically dominant session from filling all result slots.
+- **`reference_time` parameter** — retrieve/query APIs accept an optional reference timestamp. The analyzer computes temporal ranges relative to this time instead of `now()`. Used by benchmarks to evaluate with historical data, and available for production queries about past conversations.
+- **User profile cache** — `ProfileManager` maintains static facts (name, role, location, preferences) and dynamic facts (current projects, recent topics) in a JSON file at `~/.memoryport/profile-{user_id}.json`. Updated incrementally on each store operation. Designed for 0ms injection into retrieval responses.
+- **Entity registry with Jaro-Winkler dedup** — extracted entities are deduplicated using three tiers: exact case-insensitive match → Jaro-Winkler similarity > 0.85 → create new. Aliases are accumulated across matches.
 
 ## UI Design System
 
